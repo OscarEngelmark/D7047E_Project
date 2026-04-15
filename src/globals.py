@@ -11,6 +11,7 @@ DATA_DIR    = PROJECT_DIR / "data"
 OUT_DIR     = DATA_DIR / "processed"
 IMG_DIR     = OUT_DIR / "images"
 LBL_DIR     = OUT_DIR / "labels"
+MODELS_DIR  = PROJECT_DIR / "models"
 
-for p in [DATA_DIR, OUT_DIR, IMG_DIR, LBL_DIR]:
+for p in [DATA_DIR, OUT_DIR, IMG_DIR, LBL_DIR, MODELS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
