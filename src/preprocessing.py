@@ -5,7 +5,8 @@ and convert CVAT XML annotations to YOLO OBB format.
 Output structure:
   data/processed/
     images/{train,val,test}/   - JPEG frames that have at least one annotation
-    labels/{train,val,test}/   - YOLO OBB .txt files (class x1 y1 x2 y2 x3 y3 x4 y4, normalised)
+    labels/{train,val,test}/   - YOLO OBB .txt files
+                                 (class x1 y1 x2 y2 x3 y3 x4 y4, normalised)
     dataset.yaml
 """
 
@@ -30,7 +31,7 @@ SPLIT_MAP: dict[str, str] = {
 JPEG_QUALITY = 95   # saved frame quality
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+# ── helpers ─────────────────────────────────────────────────────────────────
 
 def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
     """
@@ -38,7 +39,8 @@ def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
 
     Returns
     -------
-    annotations : {frame_id: [(cx_norm, cy_norm, w_norm, h_norm, angle_deg), ...]}
+    annotations : {frame_id: [(cx_norm, cy_norm, w_norm, h_norm,
+                               angle_deg), ...]}
         Only frames where at least one box has outside=0.
     img_w, img_h : image dimensions from <original_size>
     """
@@ -75,19 +77,25 @@ def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
     return dict(annotations), img_w, img_h
 
 
-def xywha_to_corners(cx: float, cy: float, w: float, h: float, angle_deg: float) -> np.ndarray:
-    """Convert rotated box (cx, cy, w, h, angle_deg) to 4 normalised corner points."""
+def xywha_to_corners(
+    cx: float, cy: float, w: float, h: float, angle_deg: float
+) -> np.ndarray:
+    """Convert rotated box (cx, cy, w, h, angle_deg) to 4 normalised 
+    corners."""
     angle_rad = np.deg2rad(angle_deg)
     cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
     dx, dy = w / 2, h / 2
-    corners = np.array([[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]], dtype=np.float64)
+    corners = np.array(
+        [[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]], dtype=np.float64
+    )
     R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
     pts = (corners @ R.T) + np.array([cx, cy])
-    return np.clip(pts, 0.0, 1.0)  # clamp corners that fall outside the image boundary
+    # clamp corners that fall outside the image boundary
+    return np.clip(pts, 0.0, 1.0)
 
 
 def save_label(path: Path, boxes: list) -> None:
-    """Write YOLO OBB label file: class x1 y1 x2 y2 x3 y3 x4 y4 (class is always 0 = car)."""
+    """Write YOLO OBB label file: class x1 y1 … x4 y4 (class=0 = car)."""
     lines = []
     for cx, cy, w, h, angle in boxes:
         pts = xywha_to_corners(cx, cy, w, h, angle).flatten()
@@ -102,7 +110,7 @@ def frame_stem(zip_stem: str, frame_id: int) -> str:
     return f"{tag}_f{frame_id:05d}"
 
 
-# ── per-zip extractors ────────────────────────────────────────────────────────
+# ── per-zip extractors ──────────────────────────────────────────────────────
 
 def process_video_zip(
     zf: zipfile.ZipFile,
@@ -134,7 +142,10 @@ def process_video_zip(
             break
         if frame_id in annotated_frames:
             stem  = frame_stem(zip_stem, frame_id)
-            cv2.imwrite(str(img_dir / f"{stem}.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+            cv2.imwrite(
+                str(img_dir / f"{stem}.jpg"), frame,
+                [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
+            )
             save_label(lbl_dir / f"{stem}.txt", annotations[frame_id])
             saved += 1
         frame_id += 1
@@ -174,14 +185,18 @@ def process_frames_zip(
             continue
 
         stem = frame_stem(zip_stem, frame_id)
-        cv2.imwrite(str(img_dir / f"{stem}.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+        cv2.imwrite(
+            filename=str(img_dir / f"{stem}.jpg"), 
+            img=frame, 
+            params=[cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
+        )
         save_label(lbl_dir / f"{stem}.txt", annotations[frame_id])
         saved += 1
 
     return saved
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+# ── main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     # create split subdirectories
@@ -205,7 +220,10 @@ def main() -> None:
         with zipfile.ZipFile(zip_path) as zf:
             members     = zf.namelist()
             xml_files   = [n for n in members if n.endswith(".xml")]
-            video_files = [n for n in members if n.lower().endswith((".mp4", ".avi", ".mov"))]
+            video_files = [
+                n for n in members
+                if n.lower().endswith((".mp4", ".avi", ".mov"))
+            ]
             png_files   = [n for n in members if n.lower().endswith(".png")]
 
             if not xml_files:
@@ -213,9 +231,14 @@ def main() -> None:
                 continue
 
             if video_files:
-                saved = process_video_zip(zf, video_files[0], xml_files[0], zip_stem, img_dir, lbl_dir)
+                saved = process_video_zip(
+                    zf, video_files[0], xml_files[0],
+                    zip_stem, img_dir, lbl_dir,
+                )
             elif png_files:
-                saved = process_frames_zip(zf, xml_files[0], zip_stem, img_dir, lbl_dir)
+                saved = process_frames_zip(
+                    zf, xml_files[0], zip_stem, img_dir, lbl_dir,
+                )
             else:
                 print("  No video or PNG frames found, skipping")
                 continue
