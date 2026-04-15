@@ -5,7 +5,7 @@ and convert CVAT XML annotations to YOLO OBB format.
 Output structure:
   data/processed/
     images/{train,val,test}/   - JPEG frames that have at least one annotation
-    labels/{train,val,test}/   - YOLO OBB .txt files (class cx cy w h angle, normalised)
+    labels/{train,val,test}/   - YOLO OBB .txt files (class x1 y1 x2 y2 x3 y3 x4 y4, normalised)
     dataset.yaml
 """
 
@@ -75,9 +75,23 @@ def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
     return dict(annotations), img_w, img_h
 
 
+def xywha_to_corners(cx: float, cy: float, w: float, h: float, angle_deg: float) -> np.ndarray:
+    """Convert rotated box (cx, cy, w, h, angle_deg) to 4 normalised corner points."""
+    angle_rad = np.deg2rad(angle_deg)
+    cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
+    dx, dy = w / 2, h / 2
+    corners = np.array([[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]], dtype=np.float64)
+    R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+    return (corners @ R.T) + np.array([cx, cy])  # shape (4, 2)
+
+
 def save_label(path: Path, boxes: list) -> None:
-    """Write YOLO OBB label file: class cx cy w h angle (class is always 0 = car)."""
-    lines = [f"0 {cx:.6f} {cy:.6f} {w:.6f} {h:.6f} {angle:.2f}" for cx, cy, w, h, angle in boxes]
+    """Write YOLO OBB label file: class x1 y1 x2 y2 x3 y3 x4 y4 (class is always 0 = car)."""
+    lines = []
+    for cx, cy, w, h, angle in boxes:
+        pts = xywha_to_corners(cx, cy, w, h, angle).flatten()
+        coords = " ".join(f"{v:.6f}" for v in pts)
+        lines.append(f"0 {coords}")
     path.write_text("\n".join(lines))
 
 
