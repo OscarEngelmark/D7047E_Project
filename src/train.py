@@ -55,6 +55,14 @@ def parse_args() -> argparse.Namespace:
         help="name for this run (wandb + runs/ folder)",
     )
     p.add_argument(
+        "--workers", type=int, default=8,
+        help="number of dataloader workers",
+    )
+    p.add_argument(
+        "--cache", type=str, default="ram", choices=["ram", "disk", "off"],
+        help="cache images in ram/disk for faster training, or off to disable",
+    )
+    p.add_argument(
         "--no-wandb", action="store_true",
         help="disable wandb logging",
     )
@@ -115,6 +123,8 @@ def main() -> None:
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=args.batch,
+        workers=args.workers,
+        cache=args.cache if args.cache != "off" else False,
         device=DEVICE,
         seed=SEED,
         project=str(RUNS_DIR),
