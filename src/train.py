@@ -4,27 +4,66 @@ Baseline YOLOv9c-OBB training script.
 Builds the model from src/configs/yolov9c-obb.yaml and transfers backbone
 weights from the pretrained yolov9c.pt COCO checkpoint (downloaded
 automatically by ultralytics on first use).
+
+Usage
+-----
+python src/train.py                         # all defaults
+python src/train.py --epochs 50 --batch 8
+python src/train.py --run-name exp-01 --no-wandb
 """
 
+import argparse
 import yaml
 import wandb
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
-from globals import SEED, DEVICE, OUT_DIR, SRC_DIR, PROJECT_DIR, MODELS_DIR, WANDB_ENTITY, WANDB_PROJECT
+from globals import (
+    SEED, DEVICE, OUT_DIR, SRC_DIR, PROJECT_DIR,
+    MODELS_DIR, WANDB_ENTITY, WANDB_PROJECT,
+)
 
-# ── config ────────────────────────────────────────────────────────────────────
+# ── defaults ────────────────────────────────────────────────────────────────
 
-EPOCHS    = 100
-IMGSZ     = 640
-BATCH     = 16
-MODEL_CFG = SRC_DIR / "configs" / "yolov9c-obb.yaml"
-RUNS_DIR  = PROJECT_DIR / "runs"
+DEFAULT_EPOCHS   = 100
+DEFAULT_IMGSZ    = 640
+DEFAULT_BATCH    = 16
+DEFAULT_RUN_NAME = "yolov9c-obb-baseline"
+MODEL_CFG        = SRC_DIR / "configs" / "yolov9c-obb.yaml"
+RUNS_DIR         = PROJECT_DIR / "runs"
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Train YOLOv9c-OBB for car detection"
+    )
+    p.add_argument(
+        "--epochs", type=int, default=DEFAULT_EPOCHS,
+        help="number of training epochs",
+    )
+    p.add_argument(
+        "--imgsz", type=int, default=DEFAULT_IMGSZ,
+        help="input image size",
+    )
+    p.add_argument(
+        "--batch", type=int, default=DEFAULT_BATCH,
+        help="batch size",
+    )
+    p.add_argument(
+        "--run-name", type=str, default=DEFAULT_RUN_NAME,
+        help="name for this run (wandb + runs/ folder)",
+    )
+    p.add_argument(
+        "--no-wandb", action="store_true",
+        help="disable wandb logging",
+    )
+    return p.parse_args()
+
 
 def write_dataset_yaml() -> str:
-    """Regenerate dataset.yaml with the correct absolute path for this machine."""
+    """Regenerate dataset.yaml with the correct absolute path for this 
+    machine."""
     cfg = {
         "path":  str(OUT_DIR.resolve()),
         "train": "images/train",
@@ -39,30 +78,28 @@ def write_dataset_yaml() -> str:
     return str(path)
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+# ── main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    args = parse_args()
     print(f"Device: {DEVICE}")
 
     dataset_yaml = write_dataset_yaml()
     print(f"Dataset: {dataset_yaml}")
 
-    LOG_WANDB = True
-    RUN_NAME = "yolov9c-obb-baseline"
-
     wandb.init(
         entity=WANDB_ENTITY,
         project=WANDB_PROJECT,
-        name=RUN_NAME,
+        name=args.run_name,
         config={
             "model":   "yolov9c-obb",
-            "epochs":  EPOCHS,
-            "imgsz":   IMGSZ,
-            "batch":   BATCH,
+            "epochs":  args.epochs,
+            "imgsz":   args.imgsz,
+            "batch":   args.batch,
             "device":  DEVICE,
             "seed":    SEED,
         },
-        mode="online" if LOG_WANDB else "disabled",
+        mode="disabled" if args.no_wandb else "online",
     )
 
     # Build model from custom OBB config, transfer pretrained backbone weights.
@@ -75,13 +112,13 @@ def main() -> None:
     model.train(
         data=dataset_yaml,
         task="obb",
-        epochs=EPOCHS,
-        imgsz=IMGSZ,
-        batch=BATCH,
+        epochs=args.epochs,
+        imgsz=args.imgsz,
+        batch=args.batch,
         device=DEVICE,
         seed=SEED,
         project=str(RUNS_DIR),
-        name="yolov9c-obb-baseline",
+        name=args.run_name,
     )
 
     wandb.finish()
