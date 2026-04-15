@@ -1,6 +1,8 @@
 from pathlib import Path
+import torch
 
-SEED = 1
+SEED   = 1
+DEVICE = 0 if torch.cuda.is_available() else "cpu"
 
 # ── paths ────────────────────────────────────────────────────────────────────
 SRC_DIR     = Path(__file__).resolve().parent   # …/Project/src
