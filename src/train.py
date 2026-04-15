@@ -7,9 +7,10 @@ automatically by ultralytics on first use).
 """
 
 import yaml
+import wandb
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
-from globals import SEED, DEVICE, OUT_DIR, SRC_DIR, PROJECT_DIR, MODELS_DIR
+from globals import SEED, DEVICE, OUT_DIR, SRC_DIR, PROJECT_DIR, MODELS_DIR, WANDB_ENTITY, WANDB_PROJECT
 
 # ── config ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,24 @@ def main() -> None:
     dataset_yaml = write_dataset_yaml()
     print(f"Dataset: {dataset_yaml}")
 
+    LOG_WANDB = True
+    RUN_NAME = "yolov9c-obb-baseline"
+
+    wandb.init(
+        entity=WANDB_ENTITY,
+        project=WANDB_PROJECT,
+        name=RUN_NAME,
+        config={
+            "model":   "yolov9c-obb",
+            "epochs":  EPOCHS,
+            "imgsz":   IMGSZ,
+            "batch":   BATCH,
+            "device":  DEVICE,
+            "seed":    SEED,
+        },
+        mode="online" if LOG_WANDB else "disabled",
+    )
+
     # Build model from custom OBB config, transfer pretrained backbone weights.
     # Downloads yolov9c.pt to models/ on first use.
     weights = MODELS_DIR / "yolov9c.pt"
@@ -64,6 +83,8 @@ def main() -> None:
         project=str(RUNS_DIR),
         name="yolov9c-obb-baseline",
     )
+
+    wandb.finish()
 
 
 if __name__ == "__main__":
