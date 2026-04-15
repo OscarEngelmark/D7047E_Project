@@ -8,7 +8,8 @@ automatically by ultralytics on first use).
 
 import yaml
 from ultralytics import YOLO
-from globals import SEED, DEVICE, OUT_DIR, SRC_DIR, PROJECT_DIR
+from ultralytics.utils.downloads import attempt_download_asset
+from globals import SEED, DEVICE, OUT_DIR, SRC_DIR, PROJECT_DIR, MODELS_DIR
 
 # ── config ────────────────────────────────────────────────────────────────────
 
@@ -46,8 +47,11 @@ def main() -> None:
     print(f"Dataset: {dataset_yaml}")
 
     # Build model from custom OBB config, transfer pretrained backbone weights.
-    # yolov9c.pt is downloaded automatically on first use.
-    model = YOLO(str(MODEL_CFG)).load("yolov9c.pt")
+    # Downloads yolov9c.pt to models/ on first use.
+    weights = MODELS_DIR / "yolov9c.pt"
+    if not weights.exists():
+        attempt_download_asset(str(weights))
+    model = YOLO(str(MODEL_CFG)).load(str(weights))
 
     model.train(
         data=dataset_yaml,
