@@ -219,6 +219,7 @@ results/
 
 # Saved model artifacts
 models/
+*.pt
 
 # Weights & Biases
 wandb/
