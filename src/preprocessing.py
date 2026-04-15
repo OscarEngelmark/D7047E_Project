@@ -82,7 +82,8 @@ def xywha_to_corners(cx: float, cy: float, w: float, h: float, angle_deg: float)
     dx, dy = w / 2, h / 2
     corners = np.array([[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]], dtype=np.float64)
     R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
-    return (corners @ R.T) + np.array([cx, cy])  # shape (4, 2)
+    pts = (corners @ R.T) + np.array([cx, cy])
+    return np.clip(pts, 0.0, 1.0)  # clamp corners that fall outside the image boundary
 
 
 def save_label(path: Path, boxes: list) -> None:
