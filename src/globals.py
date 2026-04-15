@@ -4,6 +4,10 @@ import torch
 SEED   = 1
 DEVICE = 0 if torch.cuda.is_available() else "cpu"
 
+# ── wandb ────────────────────────────────────────────────────────────────────
+WANDB_ENTITY  = "d7047e-group12"
+WANDB_PROJECT = "Project-NVD"
+
 # ── paths ────────────────────────────────────────────────────────────────────
 SRC_DIR     = Path(__file__).resolve().parent   # …/Project/src
 PROJECT_DIR = SRC_DIR.parent                    # …/Project
