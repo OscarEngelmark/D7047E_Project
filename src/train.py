@@ -27,7 +27,8 @@ from globals import (
 
 DEFAULT_EPOCHS   = 100
 DEFAULT_IMGSZ    = 640
-DEFAULT_BATCH    = 12
+DEFAULT_BATCH    = 14
+DEFAULT_WORKERS  = 16
 DEFAULT_RUN_NAME = "test-run"
 MODEL_CFG        = SRC_DIR / "configs" / "yolov9c-obb.yaml"
 RUNS_DIR         = PROJECT_DIR / "runs"
@@ -56,7 +57,7 @@ def parse_args() -> argparse.Namespace:
         help="name for this run (wandb + runs/ folder)",
     )
     p.add_argument(
-        "--workers", type=int, default=8,
+        "--workers", type=int, default=DEFAULT_WORKERS,
         help="number of dataloader workers",
     )
     p.add_argument(
