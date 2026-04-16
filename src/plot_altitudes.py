@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from globals import OUT_DIR, RESULTS_DIR
-from video_metadata import load_video_csv, estimate_altitudes_with_fit
+from frame_metadata import load_video_csv, estimate_altitudes_with_fit
 
 
 def parse_args() -> argparse.Namespace:
