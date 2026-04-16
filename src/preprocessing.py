@@ -269,7 +269,7 @@ def main() -> None:
         vmeta = video_csv[zip_stem]
 
         print(f"\n[{split}] {zip_name}  "
-              f"(H_min={vmeta['h_min']:.0f} m, "
+              f"(H_max={vmeta['h_max']:.0f} m, "
               f"snow={vmeta['snow_cover']}, cloud={vmeta['cloud_cover']})")
         img_dir = OUT_DIR / "images" / split
         lbl_dir = OUT_DIR / "labels" / split

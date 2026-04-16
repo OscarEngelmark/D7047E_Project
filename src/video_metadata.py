@@ -5,7 +5,7 @@ Provides two public entry points:
 
   load_video_csv()
       Reads data/video_data.csv and returns a dict keyed by video name
-      (matching the zip stem) with fields: h_min, altitude_str, snow_cover,
+      (matching the zip stem) with fields: h_max, altitude_str, snow_cover,
       cloud_cover.
 
   compute_frame_metadata(annotations, img_w, img_h, video_meta)
@@ -30,11 +30,12 @@ from globals import DATA_DIR
 
 # ── CSV loading ──────────────────────────────────────────────────────────────
 
-def _parse_h_min(altitude_str: str) -> float:
-    """Parse minimum altitude (m) from 
-    '130-200 m' → 130.0 or '250 m' → 250.0."""
+def _parse_h_max(altitude_str: str) -> float:
+    """Parse maximum altitude (m) from
+    '130-200 m' → 200.0 or '250 m' → 250.0."""
     s = altitude_str.lower().replace(" m", "").strip()
-    return float(s.split("-")[0])
+    parts = s.split("-")
+    return float(parts[-1])
 
 
 def load_video_csv() -> dict[str, dict]:
@@ -44,7 +45,7 @@ def load_video_csv() -> dict[str, dict]:
     zip stem without extension). Only rows where Annotated=TRUE are included.
 
     Each entry contains:
-        h_min        : float  – minimum flight altitude in metres
+        h_max        : float  – maximum flight altitude in metres
         altitude_str : str    – raw string from CSV (e.g. '130-200 m')
         snow_cover   : str    – e.g. 'Minimal (0-1 cm)'
         cloud_cover  : str    – e.g. 'Overcast'
@@ -57,7 +58,7 @@ def load_video_csv() -> dict[str, dict]:
                 continue
             name = row["Video"].strip()
             result[name] = {
-                "h_min":        _parse_h_min(row["Flight Altitude"].strip()),
+                "h_max":        _parse_h_max(row["Flight Altitude"].strip()),
                 "altitude_str": row["Flight Altitude"].strip(),
                 "snow_cover":   row["Snow Cover"].strip(),
                 "cloud_cover":  row["Cloud Cover"].strip(),
@@ -88,36 +89,80 @@ def compute_frame_diagonals(
 
 
 def estimate_altitudes(
-    frame_diagonals: dict[int, float], h_min: float
+    frame_diagonals: dict[int, float], h_max: float
 ) -> dict[int, float]:
     """Per-frame altitude estimate (metres) using the paper's method.
 
-    Fits a 4th-degree polynomial to (frame_id, mean_diagonal) across all
-    annotated frames, finds its maximum l_max (closest drone pass), then
-    returns H_frame = h_min · l_max / l_frame for each frame.
+    H ∝ 1/l (perspective geometry: boxes appear smaller at greater altitude).
+    Fits a 4th-degree polynomial to (frame_id, 1/l) across all annotated
+    frames. The polynomial maximum corresponds to the frame where the drone
+    is highest (H_max). Per-frame altitude is then:
+
+        H_frame = H_max · (1/l_frame) / poly_max
 
     The time axis is normalised to [0, 1] for numerical stability.
+
+    Also returns the fitted polynomial coefficients and frame time axis for
+    use in diagnostic plots — see estimate_altitudes_with_fit().
     """
     if not frame_diagonals:
         return {}
 
-    frames = np.array(sorted(frame_diagonals.keys()), dtype=float)
-    diags  = np.array([frame_diagonals[int(f)] for f in frames])
+    frames     = np.array(sorted(frame_diagonals.keys()), dtype=float)
+    diags      = np.array([frame_diagonals[int(f)] for f in frames])
+    inv_diags  = 1.0 / diags
 
     span = max(frames.max() - frames.min(), 1.0)
     t    = (frames - frames.min()) / span
 
     if len(frames) >= 5:
-        coeffs  = np.polyfit(t, diags, deg=4)
-        t_dense = np.linspace(0.0, 1.0, 1000)
-        l_max   = float(np.polyval(coeffs, t_dense).max())
+        coeffs   = np.polyfit(t, inv_diags, deg=4)
+        t_dense  = np.linspace(0.0, 1.0, 1000)
+        poly_max = float(np.polyval(coeffs, t_dense).max())
     else:
-        l_max = float(diags.max())
+        poly_max = float(inv_diags.max())
 
     return {
-        int(f): float(h_min * l_max / d) 
-        for f, d in zip(frames, diags) if d > 0
+        int(f): float(h_max * inv_d / poly_max)
+        for f, inv_d in zip(frames, inv_diags)
     }
+
+
+def estimate_altitudes_with_fit(
+    frame_diagonals: dict[int, float], h_max: float
+) -> tuple[dict[int, float], np.ndarray, np.ndarray, np.ndarray]:
+    """Same as estimate_altitudes but also returns the polynomial fit for plots.
+
+    Returns
+    -------
+    altitudes   : {frame_id: altitude_m}
+    frames      : sorted frame indices (1-D array)
+    t           : normalised time axis in [0, 1] for each frame
+    coeffs      : polynomial coefficients (degree-4, fit to 1/l values)
+    """
+    if not frame_diagonals:
+        return {}, np.array([]), np.array([]), np.array([])
+
+    frames     = np.array(sorted(frame_diagonals.keys()), dtype=float)
+    diags      = np.array([frame_diagonals[int(f)] for f in frames])
+    inv_diags  = 1.0 / diags
+
+    span = max(frames.max() - frames.min(), 1.0)
+    t    = (frames - frames.min()) / span
+
+    if len(frames) >= 5:
+        coeffs   = np.polyfit(t, inv_diags, deg=4)
+        t_dense  = np.linspace(0.0, 1.0, 1000)
+        poly_max = float(np.polyval(coeffs, t_dense).max())
+    else:
+        coeffs   = np.array([])
+        poly_max = float(inv_diags.max())
+
+    altitudes = {
+        int(f): float(h_max * inv_d / poly_max)
+        for f, inv_d in zip(frames, inv_diags)
+    }
+    return altitudes, frames, t, coeffs
 
 
 def compute_frame_metadata(
@@ -139,7 +184,7 @@ def compute_frame_metadata(
     video_meta   : entry from load_video_csv() for this video
     """
     diagonals = compute_frame_diagonals(annotations, img_w, img_h)
-    altitudes = estimate_altitudes(diagonals, video_meta["h_min"])
+    altitudes = estimate_altitudes(diagonals, video_meta["h_max"])
     return {
         frame_id: {
             "mean_diag_px": diagonals.get(frame_id),
