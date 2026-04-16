@@ -23,7 +23,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from globals import OUT_DIR
+from globals import OUT_DIR, RESULTS_DIR
 from video_metadata import load_video_csv, estimate_altitudes_with_fit
 
 
@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--out", type=Path,
-        default=OUT_DIR / "altitude_sanity.png",
+        default=RESULTS_DIR / "altitudes.png",
         help="where to save the figure (default: data/processed/altitude_sanity.png)",
     )
     return p.parse_args()
@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    with open(OUT_DIR / "metadata.json") as f:
+    with open(OUT_DIR / "metadata.json") as f:  # data/processed/metadata.json
         metadata: dict[str, dict] = json.load(f)
 
     video_csv = load_video_csv()
