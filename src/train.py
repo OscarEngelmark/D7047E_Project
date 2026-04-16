@@ -100,12 +100,10 @@ def main() -> None:
         project=WANDB_PROJECT,
         name=args.run_name,
         config={
-            "model":   "yolov9c-obb",
-            "epochs":  args.epochs,
-            "imgsz":   args.imgsz,
-            "batch":   args.batch,
-            "device":  DEVICE,
-            "seed":    SEED,
+            **vars(args),       # all CLI arguments
+            "model":  "yolov9c-obb",
+            "device": DEVICE,
+            "seed":   SEED,
         },
         mode="disabled" if args.no_wandb else "online",
     )
