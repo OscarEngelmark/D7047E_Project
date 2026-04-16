@@ -92,7 +92,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--augment", action="store_true",
-        help="enable paper augmentations (degrees=45, flipud, mosaic, mixup, ...)",
+        help="enable paper augmentations (degrees=45, flipud, mosaic, ...)",
     )
     p.add_argument(
         "--no-wandb", action="store_true",
