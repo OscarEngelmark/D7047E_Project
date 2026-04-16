@@ -13,6 +13,7 @@ python src/train.py --run-name exp-01 --no-wandb
 """
 
 import argparse
+import torch
 import yaml
 import wandb
 from ultralytics import YOLO
@@ -26,7 +27,7 @@ from globals import (
 
 DEFAULT_EPOCHS   = 100
 DEFAULT_IMGSZ    = 640
-DEFAULT_BATCH    = 16
+DEFAULT_BATCH    = 12
 DEFAULT_RUN_NAME = "test-run"
 MODEL_CFG        = SRC_DIR / "configs" / "yolov9c-obb.yaml"
 RUNS_DIR         = PROJECT_DIR / "runs"
@@ -61,6 +62,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--cache", type=str, default="ram", choices=["ram", "disk", "off"],
         help="cache images in ram/disk for faster training, or off to disable",
+    )
+    p.add_argument(
+        "--optimizer", type=str, default="AdamW",
+        help="optimizer (AdamW, SGD, Adam, ...)",
+    )
+    p.add_argument(
+        "--lr0", type=float, default=0.002,
+        help="initial learning rate (AdamW default: 0.002, SGD default: 0.01)",
     )
     p.add_argument(
         "--no-wandb", action="store_true",
@@ -123,6 +132,9 @@ def main() -> None:
         batch=args.batch,
         workers=args.workers,
         cache=args.cache if args.cache != "off" else False,
+        optimizer=args.optimizer,
+        lr0=args.lr0,
+        compile=torch.cuda.is_available(),
         device=DEVICE,
         seed=SEED,
         project=str(RUNS_DIR),
