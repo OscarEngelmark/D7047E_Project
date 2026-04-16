@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 import yaml
 from globals import *
-from video_metadata import load_video_csv, compute_frame_metadata
+from frame_metadata import load_video_csv, compute_frame_metadata
 
 # Explicit per-source split assignment
 SPLIT_MAP: dict[str, str] = {
