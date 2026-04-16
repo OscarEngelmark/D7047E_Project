@@ -26,12 +26,26 @@ from globals import (
 # ── defaults ────────────────────────────────────────────────────────────────
 
 DEFAULT_EPOCHS   = 100
-DEFAULT_IMGSZ    = 640
-DEFAULT_BATCH    = 14
+DEFAULT_IMGSZ    = 1920
+DEFAULT_BATCH    = 8
 DEFAULT_WORKERS  = 16
 DEFAULT_RUN_NAME = "test-run"
 MODEL_CFG        = SRC_DIR / "configs" / "yolov9c-obb.yaml"
 RUNS_DIR         = PROJECT_DIR / "runs"
+
+# Augmentation presets (from NVD paper hyp-aug.yaml / hyp-no-aug.yaml)
+AUG_PAPER = dict(
+    hsv_h=0.015, hsv_s=0.7,  hsv_v=0.4,
+    degrees=45.0, translate=0.1, scale=0.9,
+    fliplr=0.5,  flipud=0.5,
+    mosaic=1.0,  mixup=0.1,  copy_paste=0.1,
+)
+AUG_NONE = dict(
+    hsv_h=0.0, hsv_s=0.0, hsv_v=0.0,
+    degrees=0.0, translate=0.0, scale=0.0,
+    fliplr=0.0, flipud=0.0,
+    mosaic=0.0, mixup=0.0, copy_paste=0.0,
+)
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -71,6 +85,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--lr0", type=float, default=0.002,
         help="initial learning rate (AdamW default: 0.002, SGD default: 0.01)",
+    )
+    p.add_argument(
+        "--patience", type=int, default=20,
+        help="early stopping patience in epochs (0 to disable)",
+    )
+    p.add_argument(
+        "--augment", action="store_true",
+        help="enable paper augmentations (degrees=45, flipud, mosaic, mixup, ...)",
     )
     p.add_argument(
         "--no-wandb", action="store_true",
@@ -125,6 +147,7 @@ def main() -> None:
         attempt_download_asset(str(weights))
     model = YOLO(str(MODEL_CFG)).load(str(weights))
 
+    aug = AUG_PAPER if args.augment else AUG_NONE
     model.train(
         data=dataset_yaml,
         task="obb",
@@ -135,11 +158,13 @@ def main() -> None:
         cache=args.cache if args.cache != "off" else False,
         optimizer=args.optimizer,
         lr0=args.lr0,
+        patience=args.patience,
         compile=torch.cuda.is_available(),
         device=DEVICE,
         seed=SEED,
         project=str(RUNS_DIR),
         name=args.run_name,
+        **aug,
     )
 
     wandb.finish()
