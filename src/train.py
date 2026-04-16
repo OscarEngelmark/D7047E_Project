@@ -27,7 +27,7 @@ from globals import (
 DEFAULT_EPOCHS   = 100
 DEFAULT_IMGSZ    = 640
 DEFAULT_BATCH    = 16
-DEFAULT_RUN_NAME = "yolov9c-obb-baseline"
+DEFAULT_RUN_NAME = "test-run"
 MODEL_CFG        = SRC_DIR / "configs" / "yolov9c-obb.yaml"
 RUNS_DIR         = PROJECT_DIR / "runs"
 
