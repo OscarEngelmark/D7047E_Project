@@ -16,4 +16,7 @@ fi
 echo "==> Installing Python dependencies..."
 .venv/bin/pip install -r requirements.txt
 
+echo "==> Configuring Ultralytics integrations..."
+.venv/bin/python -c "from ultralytics import settings; settings.update({'wandb': True})"
+
 echo "==> Done! Run 'source .venv/bin/activate' to activate the environment."
