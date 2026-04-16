@@ -26,6 +26,7 @@ from globals import (
 # ── defaults ────────────────────────────────────────────────────────────────
 
 DEFAULT_EPOCHS   = 100
+DEFAULT_PATIENCE = 20
 DEFAULT_IMGSZ    = 1920
 DEFAULT_BATCH    = 8
 DEFAULT_WORKERS  = 16
@@ -75,7 +76,7 @@ def parse_args() -> argparse.Namespace:
         help="number of dataloader workers",
     )
     p.add_argument(
-        "--cache", type=str, default="ram", choices=["ram", "disk", "off"],
+        "--cache", type=str, default="disk", choices=["ram", "disk", "off"],
         help="cache images in ram/disk for faster training, or off to disable",
     )
     p.add_argument(
@@ -87,7 +88,7 @@ def parse_args() -> argparse.Namespace:
         help="initial learning rate (AdamW default: 0.002, SGD default: 0.01)",
     )
     p.add_argument(
-        "--patience", type=int, default=20,
+        "--patience", type=int, default=DEFAULT_PATIENCE,
         help="early stopping patience in epochs (0 to disable)",
     )
     p.add_argument(
