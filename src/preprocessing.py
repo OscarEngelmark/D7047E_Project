@@ -8,9 +8,9 @@ Output structure:
     labels/{train,val,test}/   - YOLO OBB .txt files
                                  (class x1 y1 x2 y2 x3 y3 x4 y4, normalised)
     dataset.yaml
+    metadata.json
 """
 
-import csv
 import json
 import zipfile
 import xml.etree.ElementTree as ET
@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 import yaml
 from globals import *
+from video_metadata import load_video_csv, compute_frame_metadata
 
 # Explicit per-source split assignment
 SPLIT_MAP: dict[str, str] = {
@@ -29,33 +30,6 @@ SPLIT_MAP: dict[str, str] = {
     "2022-12-03 Nyland 01_stabilized.zip":    "val",
     "2022-12-23 Bjenberg 02_stabilized.zip":  "test",
 }
-
-def _parse_h_min(altitude_str: str) -> float:
-    """Parse minimum altitude (m) from strings like '130-200 m' or '250 m'."""
-    s = altitude_str.lower().replace(" m", "").strip()
-    return float(s.split("-")[0])
-
-
-def _load_video_csv() -> dict[str, dict]:
-    """Load per-video metadata from data/video_data.csv.
-
-    Returns a dict keyed by video name (CSV 'Video' column, matching zip stem).
-    Only rows where Annotated=TRUE are included.
-    """
-    csv_path = DATA_DIR / "video_data.csv"
-    result: dict[str, dict] = {}
-    with open(csv_path, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            if row.get("Annotated", "").strip().upper() != "TRUE":
-                continue
-            name = row["Video"].strip()
-            result[name] = {
-                "h_min":        _parse_h_min(row["Flight Altitude"].strip()),
-                "altitude_str": row["Flight Altitude"].strip(),
-                "snow_cover":   row["Snow Cover"].strip(),
-                "cloud_cover":  row["Cloud Cover"].strip(),
-            }
-    return result
 
 JPEG_QUALITY = 95   # saved frame quality
 
@@ -109,8 +83,7 @@ def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
 def xywha_to_corners(
     cx: float, cy: float, w: float, h: float, angle_deg: float
 ) -> np.ndarray:
-    """Convert rotated box (cx, cy, w, h, angle_deg) to 4 normalised 
-    corners."""
+    """Convert rotated box (cx, cy, w, h, angle_deg) to 4 normalised corners."""
     angle_rad = np.deg2rad(angle_deg)
     cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
     dx, dy = w / 2, h / 2
@@ -139,82 +112,26 @@ def frame_stem(zip_stem: str, frame_id: int) -> str:
     return f"{tag}_f{frame_id:05d}"
 
 
-def compute_frame_diagonals(
-    annotations: dict[int, list], img_w: int, img_h: int
-) -> dict[int, float]:
-    """Per-frame mean bounding-box diagonal length, in pixels.
-
-    Rotation does not change a rectangle's diagonal length, so the OBB angle
-    can be ignored here.
-    """
-    diagonals: dict[int, float] = {}
-    for frame_id, boxes in annotations.items():
-        if not boxes:
-            continue
-        diags = [
-            float(np.hypot(w * img_w, h * img_h))
-            for _, _, w, h, _ in boxes
-        ]
-        diagonals[frame_id] = float(np.mean(diags))
-    return diagonals
-
-
-def estimate_altitudes(
-    frame_diagonals: dict[int, float], h_min: float
-) -> dict[int, float]:
-    """Per-frame altitude estimate (meters) using the paper's method.
-
-    Fits a 4th-degree polynomial to (frame_id, mean_diagonal) across all
-    annotated frames, finds its maximum value l_max (the closest pass), and
-    returns H_frame = h_min · l_max / l_frame for each annotated frame.
-    """
-    if not frame_diagonals:
-        return {}
-
-    frames = np.array(sorted(frame_diagonals.keys()), dtype=float)
-    diags  = np.array([frame_diagonals[int(f)] for f in frames])
-
-    # Normalize the time axis to [0, 1] for numerical stability of polyfit
-    span = max(frames.max() - frames.min(), 1.0)
-    t = (frames - frames.min()) / span
-
-    if len(frames) >= 5:
-        coeffs = np.polyfit(t, diags, deg=4)
-        # Sample the fit densely to locate l_max anywhere on [0, 1]
-        t_dense = np.linspace(0.0, 1.0, 1000)
-        l_max = float(np.polyval(coeffs, t_dense).max())
-    else:
-        l_max = float(diags.max())
-
-    return {
-        int(f): float(h_min * l_max / d)
-        for f, d in zip(frames, diags) if d > 0
-    }
-
-
 # ── per-zip extractors ──────────────────────────────────────────────────────
 
 def _record_metadata(
     metadata: dict,
     stem: str,
     frame_id: int,
-    annotations: dict,
-    diagonals: dict,
-    altitudes: dict,
+    n_boxes: int,
+    frame_fmeta: dict,
     zip_stem: str,
     split: str,
-    snow_cover: str,
-    cloud_cover: str,
+    vmeta: dict,
 ) -> None:
     metadata[stem] = {
-        "video":        zip_stem,
-        "split":        split,
-        "frame_id":     frame_id,
-        "n_boxes":      len(annotations[frame_id]),
-        "mean_diag_px": diagonals.get(frame_id),
-        "altitude_m":   altitudes.get(frame_id),
-        "snow_cover":   snow_cover,
-        "cloud_cover":  cloud_cover,
+        "video":      zip_stem,
+        "split":      split,
+        "frame_id":   frame_id,
+        "n_boxes":    n_boxes,
+        **frame_fmeta,
+        "snow_cover": vmeta["snow_cover"],
+        "cloud_cover": vmeta["cloud_cover"],
     }
 
 
@@ -225,11 +142,9 @@ def process_video_zip(
     zip_stem: str,
     img_dir: Path,
     lbl_dir: Path,
-    h_min: float,
+    vmeta: dict,
     metadata: dict,
     split: str,
-    snow_cover: str,
-    cloud_cover: str,
 ) -> int:
     """Extract annotated frames from a zip that contains a video file."""
     print(f"  Parsing annotations from {xml_name} …")
@@ -237,8 +152,7 @@ def process_video_zip(
     annotated_frames = set(annotations.keys())
     print(f"  {len(annotated_frames)} annotated frames found")
 
-    diagonals = compute_frame_diagonals(annotations, img_w, img_h)
-    altitudes = estimate_altitudes(diagonals, h_min)
+    frame_meta = compute_frame_metadata(annotations, img_w, img_h, vmeta)
 
     print(f"  Extracting video {video_name} to memory …")
     tmp_path = OUT_DIR / "_tmp_video"
@@ -255,16 +169,17 @@ def process_video_zip(
         if not ret:
             break
         if frame_id in annotated_frames:
-            stem  = frame_stem(zip_stem, frame_id)
+            stem = frame_stem(zip_stem, frame_id)
             cv2.imwrite(
                 str(img_dir / f"{stem}.jpg"), frame,
                 [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
             )
             save_label(lbl_dir / f"{stem}.txt", annotations[frame_id])
             _record_metadata(
-                metadata, stem, frame_id, annotations,
-                diagonals, altitudes, zip_stem, split,
-                snow_cover, cloud_cover,
+                metadata, stem, frame_id,
+                len(annotations[frame_id]),
+                frame_meta.get(frame_id, {}),
+                zip_stem, split, vmeta,
             )
             saved += 1
         frame_id += 1
@@ -280,11 +195,9 @@ def process_frames_zip(
     zip_stem: str,
     img_dir: Path,
     lbl_dir: Path,
-    h_min: float,
+    vmeta: dict,
     metadata: dict,
     split: str,
-    snow_cover: str,
-    cloud_cover: str,
 ) -> int:
     """Extract annotated frames from a zip that already contains PNG frames."""
     print(f"  Parsing annotations from {xml_name} …")
@@ -292,8 +205,7 @@ def process_frames_zip(
     annotated_frames = set(annotations.keys())
     print(f"  {len(annotated_frames)} annotated frames found")
 
-    diagonals = compute_frame_diagonals(annotations, img_w, img_h)
-    altitudes = estimate_altitudes(diagonals, h_min)
+    frame_meta = compute_frame_metadata(annotations, img_w, img_h, vmeta)
 
     png_names = sorted(n for n in zf.namelist() if n.lower().endswith(".png"))
 
@@ -319,9 +231,10 @@ def process_frames_zip(
         )
         save_label(lbl_dir / f"{stem}.txt", annotations[frame_id])
         _record_metadata(
-            metadata, stem, frame_id, annotations,
-            diagonals, altitudes, zip_stem, split,
-            snow_cover, cloud_cover,
+            metadata, stem, frame_id,
+            len(annotations[frame_id]),
+            frame_meta.get(frame_id, {}),
+            zip_stem, split, vmeta,
         )
         saved += 1
 
@@ -331,7 +244,7 @@ def process_frames_zip(
 # ── main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    video_csv = _load_video_csv()
+    video_csv = load_video_csv()
 
     # create split subdirectories
     for split in ("train", "val", "test"):
@@ -353,13 +266,11 @@ def main() -> None:
                 f"{zip_name} not found in data/video_data.csv — "
                 "add it and set Annotated=TRUE."
             )
-        vmeta       = video_csv[zip_stem]
-        h_min       = vmeta["h_min"]
-        snow_cover  = vmeta["snow_cover"]
-        cloud_cover = vmeta["cloud_cover"]
+        vmeta = video_csv[zip_stem]
 
         print(f"\n[{split}] {zip_name}  "
-              f"(H_min={h_min:.0f} m, snow={snow_cover}, cloud={cloud_cover})")
+              f"(H_min={vmeta['h_min']:.0f} m, "
+              f"snow={vmeta['snow_cover']}, cloud={vmeta['cloud_cover']})")
         img_dir = OUT_DIR / "images" / split
         lbl_dir = OUT_DIR / "labels" / split
 
@@ -379,13 +290,12 @@ def main() -> None:
             if video_files:
                 saved = process_video_zip(
                     zf, video_files[0], xml_files[0],
-                    zip_stem, img_dir, lbl_dir,
-                    h_min, metadata, split, snow_cover, cloud_cover,
+                    zip_stem, img_dir, lbl_dir, vmeta, metadata, split,
                 )
             elif png_files:
                 saved = process_frames_zip(
                     zf, xml_files[0], zip_stem, img_dir, lbl_dir,
-                    h_min, metadata, split, snow_cover, cloud_cover,
+                    vmeta, metadata, split,
                 )
             else:
                 print("  No video or PNG frames found, skipping")
@@ -413,7 +323,8 @@ def main() -> None:
 
     print(f"\nDone. {total_saved} total frames → {OUT_DIR}")
     print(f"dataset.yaml written to {yaml_path}")
-    print(f"metadata.json written to {metadata_path} ({len(metadata)} entries)")
+    print(f"metadata.json written to"
+          f"{metadata_path} ({len(metadata)} entries)")
 
 
 if __name__ == "__main__":
