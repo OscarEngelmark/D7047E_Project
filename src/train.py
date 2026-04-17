@@ -1,9 +1,9 @@
 """
-Baseline YOLOv9c-OBB training script.
+Baseline YOLOv9-OBB training script.
 
-Builds the model from src/configs/yolov9c-obb.yaml and transfers backbone
-weights from the pretrained yolov9c.pt COCO checkpoint (downloaded
-automatically by ultralytics on first use).
+Builds the model from src/configs and transfers backbone weights from the 
+pretrained COCO checkpoint (downloaded automatically by ultralytics on first 
+use).
 
 Usage
 -----
@@ -106,7 +106,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--lr-unfreeze-factor", type=float, default=1.0,
-        help="multiply all LRs by this factor when backbone is unfrozen (e.g. 0.1)",
+        help="multiply all LRs by this factor when backbone is unfrozen",
     )
     p.add_argument(
         "--model", type=str, default=DEFAULT_MODEL, 
@@ -128,7 +128,8 @@ def make_unfreeze_callback(unfreeze_epoch: int, lr_factor: float = 1.0):
             if lr_factor != 1.0:
                 for pg in trainer.optimizer.param_groups:
                     pg["lr"] *= lr_factor
-                    pg["initial_lr"] *= lr_factor  # keeps the scheduler scaling correctly
+                    # keeps the scheduler scaling correctly
+                    pg["initial_lr"] *= lr_factor  
                 new_lr = trainer.optimizer.param_groups[0]["lr"]
                 print(f"[unfreeze] LR scaled by {lr_factor} → {new_lr:.6f}")
     return on_train_epoch_start
