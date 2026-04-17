@@ -19,7 +19,7 @@ import wandb
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
 from globals import (
-    SEED, DEVICE, OUT_DIR, SRC_DIR, PROJECT_DIR,
+    SEED, DEVICE, OUT_DIR, PROJECT_DIR,
     MODELS_DIR, WANDB_ENTITY, WANDB_PROJECT,
 )
 from metadata_callback import register_metadata_callbacks
@@ -101,8 +101,8 @@ def parse_args() -> argparse.Namespace:
         help="freeze first N backbone layers (0=no freeze, 10=full backbone)",
     )
     p.add_argument(
-        "--model", type=str, default=DEFAULT_MODEL, choices=["yolov9s", "yolov9c"],
-        help="model variant to train",
+        "--model", type=str, default=DEFAULT_MODEL, 
+        choices=["yolov9s", "yolov9c"], help="model variant to train",
     )
     p.add_argument(
         "--no-wandb", action="store_true",
@@ -151,7 +151,7 @@ def main() -> None:
     )
 
     # Build model from custom OBB config, transfer pretrained backbone weights.
-    model_cfg = SRC_DIR / "configs" / f"{args.model}-obb.yaml"
+    model_cfg = PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
     weights   = MODELS_DIR / f"{args.model}.pt"
     if not weights.exists():
         attempt_download_asset(str(weights))
