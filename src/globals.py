@@ -4,6 +4,8 @@ import torch
 SEED   = 1
 DEVICE = 0 if torch.cuda.is_available() else "cpu"
 
+JPEG_QUALITY = 95   # saved frame quality
+
 # ── wandb ────────────────────────────────────────────────────────────────────
 WANDB_ENTITY  = "d7047e-group12"
 WANDB_PROJECT = "Project-NVD"
