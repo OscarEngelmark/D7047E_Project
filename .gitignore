@@ -231,3 +231,6 @@ runs/
 
 # Visual Studio Code settings
 .vscode
+
+# Local notes
+notes.txt
