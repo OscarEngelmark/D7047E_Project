@@ -8,8 +8,10 @@ Output structure:
     labels/{train,val,test}/   - YOLO OBB .txt files
                                  (class x1 y1 x2 y2 x3 y3 x4 y4, normalised)
     dataset.yaml
+    metadata.json
 """
 
+import json
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -18,6 +20,7 @@ import cv2
 import numpy as np
 import yaml
 from globals import *
+from frame_metadata import load_video_csv, compute_frame_metadata
 
 # Explicit per-source split assignment
 SPLIT_MAP: dict[str, str] = {
@@ -80,8 +83,7 @@ def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
 def xywha_to_corners(
     cx: float, cy: float, w: float, h: float, angle_deg: float
 ) -> np.ndarray:
-    """Convert rotated box (cx, cy, w, h, angle_deg) to 4 normalised 
-    corners."""
+    """Convert rotated box (cx, cy, w, h, angle_deg) to 4 normalised corners."""
     angle_rad = np.deg2rad(angle_deg)
     cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
     dx, dy = w / 2, h / 2
@@ -112,6 +114,27 @@ def frame_stem(zip_stem: str, frame_id: int) -> str:
 
 # ── per-zip extractors ──────────────────────────────────────────────────────
 
+def _record_metadata(
+    metadata: dict,
+    stem: str,
+    frame_id: int,
+    n_boxes: int,
+    frame_fmeta: dict,
+    zip_stem: str,
+    split: str,
+    vmeta: dict,
+) -> None:
+    metadata[stem] = {
+        "video":      zip_stem,
+        "split":      split,
+        "frame_id":   frame_id,
+        "n_boxes":    n_boxes,
+        **frame_fmeta,
+        "snow_cover": vmeta["snow_cover"],
+        "cloud_cover": vmeta["cloud_cover"],
+    }
+
+
 def process_video_zip(
     zf: zipfile.ZipFile,
     video_name: str,
@@ -119,12 +142,17 @@ def process_video_zip(
     zip_stem: str,
     img_dir: Path,
     lbl_dir: Path,
+    vmeta: dict,
+    metadata: dict,
+    split: str,
 ) -> int:
     """Extract annotated frames from a zip that contains a video file."""
     print(f"  Parsing annotations from {xml_name} …")
-    annotations, _, _ = parse_annotations(zf.read(xml_name))
+    annotations, img_w, img_h = parse_annotations(zf.read(xml_name))
     annotated_frames = set(annotations.keys())
     print(f"  {len(annotated_frames)} annotated frames found")
+
+    frame_meta = compute_frame_metadata(annotations, img_w, img_h, vmeta)
 
     print(f"  Extracting video {video_name} to memory …")
     tmp_path = OUT_DIR / "_tmp_video"
@@ -141,12 +169,18 @@ def process_video_zip(
         if not ret:
             break
         if frame_id in annotated_frames:
-            stem  = frame_stem(zip_stem, frame_id)
+            stem = frame_stem(zip_stem, frame_id)
             cv2.imwrite(
                 str(img_dir / f"{stem}.jpg"), frame,
                 [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
             )
             save_label(lbl_dir / f"{stem}.txt", annotations[frame_id])
+            _record_metadata(
+                metadata, stem, frame_id,
+                len(annotations[frame_id]),
+                frame_meta.get(frame_id, {}),
+                zip_stem, split, vmeta,
+            )
             saved += 1
         frame_id += 1
 
@@ -161,12 +195,17 @@ def process_frames_zip(
     zip_stem: str,
     img_dir: Path,
     lbl_dir: Path,
+    vmeta: dict,
+    metadata: dict,
+    split: str,
 ) -> int:
     """Extract annotated frames from a zip that already contains PNG frames."""
     print(f"  Parsing annotations from {xml_name} …")
-    annotations, _, _ = parse_annotations(zf.read(xml_name))
+    annotations, img_w, img_h = parse_annotations(zf.read(xml_name))
     annotated_frames = set(annotations.keys())
     print(f"  {len(annotated_frames)} annotated frames found")
+
+    frame_meta = compute_frame_metadata(annotations, img_w, img_h, vmeta)
 
     png_names = sorted(n for n in zf.namelist() if n.lower().endswith(".png"))
 
@@ -186,11 +225,17 @@ def process_frames_zip(
 
         stem = frame_stem(zip_stem, frame_id)
         cv2.imwrite(
-            filename=str(img_dir / f"{stem}.jpg"), 
-            img=frame, 
+            filename=str(img_dir / f"{stem}.jpg"),
+            img=frame,
             params=[cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
         )
         save_label(lbl_dir / f"{stem}.txt", annotations[frame_id])
+        _record_metadata(
+            metadata, stem, frame_id,
+            len(annotations[frame_id]),
+            frame_meta.get(frame_id, {}),
+            zip_stem, split, vmeta,
+        )
         saved += 1
 
     return saved
@@ -199,12 +244,15 @@ def process_frames_zip(
 # ── main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    video_csv = load_video_csv()
+
     # create split subdirectories
     for split in ("train", "val", "test"):
         (OUT_DIR / "images" / split).mkdir(parents=True, exist_ok=True)
         (OUT_DIR / "labels" / split).mkdir(parents=True, exist_ok=True)
 
     total_saved = 0
+    metadata: dict[str, dict] = {}
 
     for zip_name, split in SPLIT_MAP.items():
         zip_path = DATA_DIR / zip_name
@@ -212,10 +260,19 @@ def main() -> None:
             print(f"[SKIP] {zip_name} not found")
             continue
 
-        print(f"\n[{split}] {zip_name}")
         zip_stem = Path(zip_name).stem
-        img_dir  = OUT_DIR / "images" / split
-        lbl_dir  = OUT_DIR / "labels" / split
+        if zip_stem not in video_csv:
+            raise KeyError(
+                f"{zip_name} not found in data/video_data.csv — "
+                "add it and set Annotated=TRUE."
+            )
+        vmeta = video_csv[zip_stem]
+
+        print(f"\n[{split}] {zip_name}  "
+              f"(H_max={vmeta['h_max']:.0f} m, "
+              f"snow={vmeta['snow_cover']}, cloud={vmeta['cloud_cover']})")
+        img_dir = OUT_DIR / "images" / split
+        lbl_dir = OUT_DIR / "labels" / split
 
         with zipfile.ZipFile(zip_path) as zf:
             members     = zf.namelist()
@@ -233,11 +290,12 @@ def main() -> None:
             if video_files:
                 saved = process_video_zip(
                     zf, video_files[0], xml_files[0],
-                    zip_stem, img_dir, lbl_dir,
+                    zip_stem, img_dir, lbl_dir, vmeta, metadata, split,
                 )
             elif png_files:
                 saved = process_frames_zip(
                     zf, xml_files[0], zip_stem, img_dir, lbl_dir,
+                    vmeta, metadata, split,
                 )
             else:
                 print("  No video or PNG frames found, skipping")
@@ -259,8 +317,14 @@ def main() -> None:
     with open(yaml_path, "w") as f:
         yaml.dump(dataset_yaml, f, default_flow_style=False, sort_keys=False)
 
+    metadata_path = OUT_DIR / "metadata.json"
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2, sort_keys=True)
+
     print(f"\nDone. {total_saved} total frames → {OUT_DIR}")
     print(f"dataset.yaml written to {yaml_path}")
+    print(f"metadata.json written to"
+          f"{metadata_path} ({len(metadata)} entries)")
 
 
 if __name__ == "__main__":

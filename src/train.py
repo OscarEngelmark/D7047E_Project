@@ -22,6 +22,7 @@ from globals import (
     SEED, DEVICE, OUT_DIR, SRC_DIR, PROJECT_DIR,
     MODELS_DIR, WANDB_ENTITY, WANDB_PROJECT,
 )
+from metadata_callback import register_metadata_callbacks
 
 # ── defaults ────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,7 @@ def main() -> None:
     if not weights.exists():
         attempt_download_asset(str(weights))
     model = YOLO(str(MODEL_CFG)).load(str(weights))
+    register_metadata_callbacks(model)
 
     aug = AUG_PAPER if args.augment else AUG_NONE
     model.train(
