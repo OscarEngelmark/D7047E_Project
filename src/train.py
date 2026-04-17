@@ -105,6 +105,10 @@ def parse_args() -> argparse.Namespace:
         help="epoch at which to unfreeze frozen layers (0=never unfreeze)",
     )
     p.add_argument(
+        "--lr-unfreeze-factor", type=float, default=1.0,
+        help="multiply all LRs by this factor when backbone is unfrozen (e.g. 0.1)",
+    )
+    p.add_argument(
         "--model", type=str, default=DEFAULT_MODEL, 
         choices=["yolov9s", "yolov9c"], help="model variant to train",
     )
@@ -115,12 +119,18 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def make_unfreeze_callback(unfreeze_epoch: int):
+def make_unfreeze_callback(unfreeze_epoch: int, lr_factor: float = 1.0):
     def on_train_epoch_start(trainer):
         if trainer.epoch == unfreeze_epoch:
             for _, param in trainer.model.named_parameters():
                 param.requires_grad = True
             print(f"[unfreeze] All layers unfrozen at epoch {unfreeze_epoch}")
+            if lr_factor != 1.0:
+                for pg in trainer.optimizer.param_groups:
+                    pg["lr"] *= lr_factor
+                    pg["initial_lr"] *= lr_factor  # keeps the scheduler scaling correctly
+                new_lr = trainer.optimizer.param_groups[0]["lr"]
+                print(f"[unfreeze] LR scaled by {lr_factor} → {new_lr:.6f}")
     return on_train_epoch_start
 
 
@@ -156,10 +166,11 @@ def main() -> None:
         name=args.run_name,
         dir=str(PROJECT_DIR),
         config={
-            **vars(args),       # all CLI arguments
+            **vars(args),
             "model":  f"{args.model}-obb",
             "device": DEVICE,
             "seed":   SEED,
+            "lr_after_unfreeze": args.lr0 * args.lr_unfreeze_factor,
         },
         mode="disabled" if args.no_wandb else "online",
     )
@@ -172,7 +183,9 @@ def main() -> None:
     model = YOLO(str(model_cfg)).load(str(weights))
     register_metadata_callbacks(model)
     if args.freeze > 0 and args.unfreeze_epoch > 0:
-        model.add_callback("on_train_epoch_start", make_unfreeze_callback(args.unfreeze_epoch))
+        model.add_callback("on_train_epoch_start", make_unfreeze_callback(
+            args.unfreeze_epoch, args.lr_unfreeze_factor,
+        ))
 
     aug = AUG_PAPER if args.augment else {}
     model.train(
