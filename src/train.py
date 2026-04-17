@@ -101,6 +101,10 @@ def parse_args() -> argparse.Namespace:
         help="freeze first N backbone layers (0=no freeze, 10=full backbone)",
     )
     p.add_argument(
+        "--unfreeze-epoch", type=int, default=0,
+        help="epoch at which to unfreeze frozen layers (0=never unfreeze)",
+    )
+    p.add_argument(
         "--model", type=str, default=DEFAULT_MODEL, 
         choices=["yolov9s", "yolov9c"], help="model variant to train",
     )
@@ -109,6 +113,15 @@ def parse_args() -> argparse.Namespace:
         help="disable wandb logging",
     )
     return p.parse_args()
+
+
+def make_unfreeze_callback(unfreeze_epoch: int):
+    def on_train_epoch_start(trainer):
+        if trainer.epoch == unfreeze_epoch:
+            for _, param in trainer.model.named_parameters():
+                param.requires_grad = True
+            print(f"[unfreeze] All layers unfrozen at epoch {unfreeze_epoch}")
+    return on_train_epoch_start
 
 
 def write_dataset_yaml() -> str:
@@ -157,6 +170,8 @@ def main() -> None:
         attempt_download_asset(str(weights))
     model = YOLO(str(model_cfg)).load(str(weights))
     register_metadata_callbacks(model)
+    if args.freeze > 0 and args.unfreeze_epoch > 0:
+        model.add_callback("on_train_epoch_start", make_unfreeze_callback(args.unfreeze_epoch))
 
     aug = AUG_PAPER if args.augment else {}
     model.train(
