@@ -23,12 +23,13 @@ Extension points
 from __future__ import annotations
 
 import csv
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from globals import DATA_DIR
 
 
-# ── CSV loading ──────────────────────────────────────────────────────────────
+# ── CSV loading ─────────────────────────────────────────────────────────────
 
 def _parse_h_max(altitude_str: str) -> float:
     """Parse maximum altitude (m) from
@@ -38,7 +39,7 @@ def _parse_h_max(altitude_str: str) -> float:
     return float(parts[-1])
 
 
-def load_video_csv() -> dict[str, dict]:
+def load_video_csv() -> Dict[str, Dict[str, Any]]:
     """Load per-video metadata from data/video_data.csv.
 
     Returns a dict keyed by video name (CSV 'Video' column, which matches the
@@ -51,7 +52,7 @@ def load_video_csv() -> dict[str, dict]:
         cloud_cover  : str    – e.g. 'Overcast'
     """
     csv_path = DATA_DIR / "video_data.csv"
-    result: dict[str, dict] = {}
+    result: Dict[str, Dict[str, Any]] = {}
     with open(csv_path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             if row.get("Annotated", "").strip().upper() != "TRUE":
@@ -66,17 +67,19 @@ def load_video_csv() -> dict[str, dict]:
     return result
 
 
-# ── per-frame computation ────────────────────────────────────────────────────
+# ── per-frame computation ───────────────────────────────────────────────────
 
 def compute_frame_diagonals(
-    annotations: dict[int, list], img_w: int, img_h: int
-) -> dict[int, float]:
+    annotations: Dict[int, List[Tuple[float, float, float, float, float]]],
+    img_w: int,
+    img_h: int,
+) -> Dict[int, float]:
     """Per-frame mean bounding-box diagonal length, in pixels.
 
     Rotation does not change a rectangle's diagonal, so the OBB angle is
     ignored here.
     """
-    diagonals: dict[int, float] = {}
+    diagonals: Dict[int, float] = {}
     for frame_id, boxes in annotations.items():
         if not boxes:
             continue
@@ -89,8 +92,8 @@ def compute_frame_diagonals(
 
 
 def estimate_altitudes(
-    frame_diagonals: dict[int, float], h_max: float
-) -> dict[int, float]:
+    frame_diagonals: Dict[int, float], h_max: float
+) -> Dict[int, float]:
     """Per-frame altitude estimate (metres) using the paper's method.
 
     H ∝ 1/l (perspective geometry: boxes appear smaller at greater altitude).
@@ -129,9 +132,10 @@ def estimate_altitudes(
 
 
 def estimate_altitudes_with_fit(
-    frame_diagonals: dict[int, float], h_max: float
-) -> tuple[dict[int, float], np.ndarray, np.ndarray, np.ndarray]:
-    """Same as estimate_altitudes but also returns the polynomial fit for plots.
+    frame_diagonals: Dict[int, float], h_max: float
+) -> Tuple[Dict[int, float], np.ndarray, np.ndarray, np.ndarray]:
+    """Same as estimate_altitudes but also returns the polynomial fit for 
+    plots.
 
     Returns
     -------
@@ -166,11 +170,11 @@ def estimate_altitudes_with_fit(
 
 
 def compute_frame_metadata(
-    annotations: dict[int, list],
+    annotations: Dict[int, List[Tuple[float, float, float, float, float]]],
     img_w: int,
     img_h: int,
-    video_meta: dict,
-) -> dict[int, dict]:
+    video_meta: Dict[str, Any],
+) -> Dict[int, Dict[str, Optional[float]]]:
     """Compute per-frame metadata for every annotated frame in a video.
 
     Returns {frame_id: {field: value, ...}}. The dict is spread directly into

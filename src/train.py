@@ -13,6 +13,7 @@ python src/train.py --run-name exp-01 --no-wandb
 """
 
 import argparse
+from typing import Callable, Dict
 import torch
 import yaml
 import wandb
@@ -36,13 +37,13 @@ DEFAULT_MODEL    = "yolov9s"
 RUNS_DIR         = PROJECT_DIR / "runs"
 
 # Augmentation presets (from NVD paper hyp-aug.yaml / hyp-no-aug.yaml)
-AUG_PAPER = dict(
+AUG_PAPER: Dict[str, float] = dict(
     hsv_h=0.015, hsv_s=0.7,  hsv_v=0.4,
     degrees=45.0, translate=0.1, scale=0.9,
     fliplr=0.5,  flipud=0.5,
     mosaic=1.0,  mixup=0.1,  copy_paste=0.1,
 )
-AUG_NONE = dict(
+AUG_NONE: Dict[str, float] = dict(
     hsv_h=0.0, hsv_s=0.0, hsv_v=0.0,
     degrees=0.0, translate=0.0, scale=0.0,
     fliplr=0.0, flipud=0.0,
@@ -119,7 +120,9 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def make_unfreeze_callback(unfreeze_epoch: int, lr_factor: float = 1.0):
+def make_unfreeze_callback(
+        unfreeze_epoch: int, lr_factor: float = 1.0
+    ) -> Callable:
     def on_train_epoch_start(trainer):
         if trainer.epoch == unfreeze_epoch:
             for _, param in trainer.model.named_parameters():

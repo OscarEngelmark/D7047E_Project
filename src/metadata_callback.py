@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import wandb
@@ -37,7 +37,7 @@ from globals import OUT_DIR
 # 200 m, and 250 m. Each bucket below is centred on one of those values; the
 # 130-200 m flights spread across the 130/150/200 buckets according to
 # per-frame estimate. Edges are exclusive on the upper side.
-ALTITUDE_BUCKETS: list[tuple[str, float, float]] = [
+ALTITUDE_BUCKETS: List[Tuple[str, float, float]] = [
     ("120m",  0.0,   125.0),
     ("130m",  125.0, 140.0),
     ("150m",  140.0, 175.0),
@@ -48,20 +48,21 @@ ALTITUDE_BUCKETS: list[tuple[str, float, float]] = [
 
 # ── module state ───────────────────────────────────────────────────────────
 
-_metadata_cache: dict[str, dict] | None = None
+_metadata_cache: Optional[Dict[str, Dict[str, Any]]] = None
 _val_count: int = 0  # incremented per val pass so W&B logs map to train epochs
 
 
-def _load_metadata() -> dict[str, dict]:
+def _load_metadata() -> Dict[str, Dict[str, Any]]:
     global _metadata_cache
     if _metadata_cache is None:
         path = OUT_DIR / "metadata.json"
         with open(path) as f:
             _metadata_cache = json.load(f)
+    assert _metadata_cache is not None
     return _metadata_cache
 
 
-def _bucket_for(altitude: float | None) -> str | None:
+def _bucket_for(altitude: Optional[float]) -> Optional[str]:
     if altitude is None:
         return None
     for label, lo, hi in ALTITUDE_BUCKETS:
@@ -105,13 +106,14 @@ def _to_key(s: str) -> str:
 
 
 def _log_categorical_buckets(
-    per_image_stats: list,
-    metadata: dict,
+    per_image_stats: List[Tuple[str, Dict[str, Any]]],
+    metadata: Dict[str, Dict[str, Any]],
     field: str,
     prefix: str,
-) -> dict[str, float | int]:
-    """Group per-image stats by a categorical metadata field and compute metrics."""
-    bucketed: dict[str, list[dict]] = {}
+) -> Dict[str, Union[float, int]]:
+    """Group per-image stats by a categorical metadata field and compute 
+    metrics."""
+    bucketed: Dict[str, List[Dict[str, Any]]] = {}
     for im_file, entry in per_image_stats:
         stem = Path(im_file).stem
         meta = metadata.get(stem)
@@ -119,7 +121,7 @@ def _log_categorical_buckets(
         key  = _to_key(val) if val else "unknown"
         bucketed.setdefault(key, []).append(entry)
 
-    log: dict[str, float | int] = {}
+    log: Dict[str, Union[float, int]] = {}
     for bucket, entries in bucketed.items():
         n_imgs    = len(entries)
         n_targets = sum(int(e["target_cls"].size) for e in entries)
@@ -139,7 +141,8 @@ def _log_categorical_buckets(
 
 
 def _on_val_end(validator) -> None:
-    """Group per-image stats by altitude, snow cover, and cloud cover; log to W&B."""
+    """Group per-image stats by altitude, snow cover, and cloud cover; 
+    log to W&B."""
     global _val_count
     _val_count += 1
 
@@ -152,7 +155,7 @@ def _on_val_end(validator) -> None:
     per_image_stats = validator._per_image_stats
 
     # ── altitude buckets ────────────────────────────────────────────────────
-    bucketed: dict[str, list[dict]] = {b[0]: [] for b in ALTITUDE_BUCKETS}
+    bucketed = {b[0]: [] for b in ALTITUDE_BUCKETS}
     bucketed["unknown"] = []
     for im_file, entry in per_image_stats:
         stem = Path(im_file).stem
@@ -160,7 +163,7 @@ def _on_val_end(validator) -> None:
         bucket = _bucket_for(meta["altitude_m"]) if meta else None
         bucketed.setdefault(bucket or "unknown", []).append(entry)
 
-    log: dict[str, float | int] = {}
+    log: Dict[str, Union[float, int]] = {}
     for bucket, entries in bucketed.items():
         if not entries:
             continue
@@ -188,7 +191,9 @@ def _on_val_end(validator) -> None:
     wandb.log(log, step=_val_count)
 
 
-def _per_bucket_metrics(entries: list[dict[str, Any]]) -> tuple[float, float, float, float] | None:
+def _per_bucket_metrics(
+        entries: List[Dict[str, Any]]
+    ) -> Optional[Tuple[float, float, float, float]]:
     """Run ultralytics' ap_per_class on a subset of per-image stats.
 
     Returns (precision, recall, mAP50, mAP50-95) for the single 'car' class,

@@ -16,6 +16,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 import yaml
@@ -24,7 +25,11 @@ from frame_metadata import load_video_csv, compute_frame_metadata
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
-def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
+def parse_annotations(
+        xml_bytes: bytes
+    ) -> Tuple[
+        Dict[int, List[Tuple[float, float, float, float, float]]], int, int
+        ]:
     """
     Parse a CVAT interpolation XML.
 
@@ -44,7 +49,7 @@ def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
     img_w = int(size.findtext("width") or 1920)
     img_h = int(size.findtext("height") or 1080)
 
-    annotations: dict[int, list] = defaultdict(list)
+    annotations = defaultdict(list)
 
     for track in root.findall(".//track"):
         for box in track.findall("box"):
@@ -71,7 +76,8 @@ def parse_annotations(xml_bytes: bytes) -> tuple[dict[int, list], int, int]:
 def xywha_to_corners(
     cx: float, cy: float, w: float, h: float, angle_deg: float
 ) -> np.ndarray:
-    """Convert rotated box (cx, cy, w, h, angle_deg) to 4 normalised corners."""
+    """Convert rotated box (cx, cy, w, h, angle_deg)
+    to 4 normalised corners."""
     angle_rad = np.deg2rad(angle_deg)
     cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
     dx, dy = w / 2, h / 2
@@ -84,7 +90,9 @@ def xywha_to_corners(
     return np.clip(pts, 0.0, 1.0)
 
 
-def save_label(path: Path, boxes: list) -> None:
+def save_label(
+        path: Path, boxes: List[Tuple[float, float, float, float, float]]
+    ) -> None:
     """Write YOLO OBB label file: class x1 y1 … x4 y4 (class=0 = car)."""
     lines = []
     for cx, cy, w, h, angle in boxes:
@@ -103,14 +111,14 @@ def frame_stem(zip_stem: str, frame_id: int) -> str:
 # ── per-zip extractors ──────────────────────────────────────────────────────
 
 def _record_metadata(
-    metadata: dict,
+    metadata: Dict[str, Dict[str, Any]],
     stem: str,
     frame_id: int,
     n_boxes: int,
-    frame_fmeta: dict,
+    frame_fmeta: Dict[str, Optional[float]],
     zip_stem: str,
     split: str,
-    vmeta: dict,
+    vmeta: Dict[str, Any],
 ) -> None:
     metadata[stem] = {
         "video":      zip_stem,
@@ -130,8 +138,8 @@ def process_video_zip(
     zip_stem: str,
     img_dir: Path,
     lbl_dir: Path,
-    vmeta: dict,
-    metadata: dict,
+    vmeta: Dict[str, Any],
+    metadata: Dict[str, Dict[str, Any]],
     split: str,
 ) -> int:
     """Extract annotated frames from a zip that contains a video file."""
@@ -183,8 +191,8 @@ def process_frames_zip(
     zip_stem: str,
     img_dir: Path,
     lbl_dir: Path,
-    vmeta: dict,
-    metadata: dict,
+    vmeta: Dict[str, Any],
+    metadata: Dict[str, Dict[str, Any]],
     split: str,
 ) -> int:
     """Extract annotated frames from a zip that already contains PNG frames."""
@@ -240,7 +248,7 @@ def main() -> None:
         (OUT_DIR / "labels" / split).mkdir(parents=True, exist_ok=True)
 
     total_saved = 0
-    metadata: dict[str, dict] = {}
+    metadata: Dict[str, Dict[str, Any]] = {}
 
     for zip_name, split in SPLIT_MAP.items():
         zip_path = DATA_DIR / zip_name

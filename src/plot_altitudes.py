@@ -11,14 +11,15 @@ data/video_data.csv.  Produces one column per video with two rows:
 
 Usage
 -----
-    python src/plot_altitude_sanity.py
-    python src/plot_altitude_sanity.py --out results/altitude_sanity.png
+    python src/plot_altitude.py
+    python src/plot_altitude.py --out results/altitude.png
 """
 
 import argparse
 import json
 from collections import defaultdict
 from pathlib import Path
+from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--out", type=Path,
         default=RESULTS_DIR / "altitudes.png",
-        help="where to save the figure (default: data/processed/altitude_sanity.png)",
+        help="where to save the figure (default: data/processed/altitude.png)",
     )
     return p.parse_args()
 
@@ -41,12 +42,12 @@ def main() -> None:
     args = parse_args()
 
     with open(OUT_DIR / "metadata.json") as f:  # data/processed/metadata.json
-        metadata: dict[str, dict] = json.load(f)
+        metadata: Dict[str, Dict[str, Any]] = json.load(f)
 
     video_csv = load_video_csv()
 
     # Group frame entries by video stem
-    by_video: dict[str, list[dict]] = defaultdict(list)
+    by_video: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for entry in metadata.values():
         by_video[entry["video"]].append(entry)
 
