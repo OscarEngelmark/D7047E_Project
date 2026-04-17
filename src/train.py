@@ -82,12 +82,12 @@ def parse_args() -> argparse.Namespace:
         help="cache images in ram/disk for faster training, or off to disable",
     )
     p.add_argument(
-        "--optimizer", type=str, default="AdamW",
-        help="optimizer (AdamW, SGD, Adam, ...)",
+        "--optimizer", type=str, default="auto",
+        help="optimizer (auto, SGD, AdamW, MuSGD, ...); 'auto' selects MuSGD lr=0.01 for this dataset size",
     )
     p.add_argument(
-        "--lr0", type=float, default=0.002,
-        help="initial learning rate (AdamW default: 0.002, SGD default: 0.01)",
+        "--lr0", type=float, default=0.01,
+        help="initial learning rate (SGD/MuSGD default: 0.01, AdamW: 0.002)",
     )
     p.add_argument(
         "--patience", type=int, default=DEFAULT_PATIENCE,
@@ -174,7 +174,6 @@ def main() -> None:
             "model":  f"{args.model}-obb",
             "device": DEVICE,
             "seed":   SEED,
-            "lr_after_unfreeze": args.lr0 * args.lr_unfreeze_factor,
         },
         mode="disabled" if args.no_wandb else "online",
     )
