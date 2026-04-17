@@ -15,8 +15,12 @@ fi
 
 echo "==> Installing Python dependencies..."
 .venv/bin/pip install -r requirements.txt
+.venv/bin/pip install --upgrade protobuf
 
 echo "==> Configuring Ultralytics integrations..."
 .venv/bin/python -c "from ultralytics import settings; settings.update({'wandb': True})"
+
+echo "==> Emptying trash..."
+rm -rf ~/.local/share/Trash/files/* ~/.local/share/Trash/info/* 2>/dev/null || true
 
 echo "==> Done! Run 'source .venv/bin/activate' to activate the environment."
