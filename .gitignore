@@ -228,6 +228,7 @@ runs/
 
 # Claude
 .claude/settings.local.json
+CLAUDE.md
 
 # Visual Studio Code settings
 .vscode
