@@ -154,6 +154,7 @@ def main() -> None:
         entity=WANDB_ENTITY,
         project=WANDB_PROJECT,
         name=args.run_name,
+        dir=str(PROJECT_DIR),
         config={
             **vars(args),       # all CLI arguments
             "model":  f"{args.model}-obb",
