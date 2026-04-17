@@ -74,29 +74,37 @@ def parse_annotations(
 
 
 def xywha_to_corners(
-    cx: float, cy: float, w: float, h: float, angle_deg: float
+    cx: float, cy: float, w: float, h: float, angle_deg: float,
+    img_w: int, img_h: int,
 ) -> np.ndarray:
-    """Convert rotated box (cx, cy, w, h, angle_deg)
-    to 4 normalised corners."""
+    """Convert rotated box (cx, cy, w, h normalised, angle_deg) to 4 normalised corners.
+
+    Rotation is applied in pixel space to match CVAT's coordinate convention.
+    Normalising before rotation distorts angles on non-square images (e.g. 1920×1080).
+    """
+    cx_px, cy_px = cx * img_w, cy * img_h
+    w_px,  h_px  = w  * img_w, h  * img_h
     angle_rad = np.deg2rad(angle_deg)
     cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
-    dx, dy = w / 2, h / 2
+    dx, dy = w_px / 2, h_px / 2
     corners = np.array(
         [[-dx, -dy], [dx, -dy], [dx, dy], [-dx, dy]], dtype=np.float64
     )
     R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
-    pts = (corners @ R.T) + np.array([cx, cy])
-    # clamp corners that fall outside the image boundary
-    return np.clip(pts, 0.0, 1.0)
+    pts_px = (corners @ R.T) + np.array([cx_px, cy_px])
+    return np.clip(pts_px / np.array([img_w, img_h]), 0.0, 1.0)
 
 
 def save_label(
-        path: Path, boxes: List[Tuple[float, float, float, float, float]]
+        path: Path,
+        boxes: List[Tuple[float, float, float, float, float]],
+        img_w: int,
+        img_h: int,
     ) -> None:
     """Write YOLO OBB label file: class x1 y1 … x4 y4 (class=0 = car)."""
     lines = []
     for cx, cy, w, h, angle in boxes:
-        pts = xywha_to_corners(cx, cy, w, h, angle).flatten()
+        pts = xywha_to_corners(cx, cy, w, h, angle, img_w, img_h).flatten()
         coords = " ".join(f"{v:.6f}" for v in pts)
         lines.append(f"0 {coords}")
     path.write_text("\n".join(lines))
@@ -170,7 +178,7 @@ def process_video_zip(
                 str(img_dir / f"{stem}.jpg"), frame,
                 [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
             )
-            save_label(lbl_dir / f"{stem}.txt", annotations[frame_id])
+            save_label(lbl_dir / f"{stem}.txt", annotations[frame_id], img_w, img_h)
             _record_metadata(
                 metadata, stem, frame_id,
                 len(annotations[frame_id]),
@@ -225,7 +233,7 @@ def process_frames_zip(
             img=frame,
             params=[cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
         )
-        save_label(lbl_dir / f"{stem}.txt", annotations[frame_id])
+        save_label(lbl_dir / f"{stem}.txt", annotations[frame_id], img_w, img_h)
         _record_metadata(
             metadata, stem, frame_id,
             len(annotations[frame_id]),
