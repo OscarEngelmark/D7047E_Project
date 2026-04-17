@@ -4,13 +4,24 @@ import torch
 SEED   = 1
 DEVICE = 0 if torch.cuda.is_available() else "cpu"
 
+
+# ── preprocessing ───────────────────────────────────────────────────────────
 JPEG_QUALITY = 95   # saved frame quality
 
-# ── wandb ────────────────────────────────────────────────────────────────────
+# Explicit per-source split assignment
+SPLIT_MAP: dict[str, str] = {
+    "2022-12-02 Asjo 01_stabilized.zip":      "train",
+    "2022-12-04 Bjenberg 02.zip":             "train",
+    "2022-12-23 Asjo 01_HD 5x stab.zip":      "train",
+    "2022-12-03 Nyland 01_stabilized.zip":    "val",
+    "2022-12-23 Bjenberg 02_stabilized.zip":  "test",
+}
+
+# ── wandb ───────────────────────────────────────────────────────────────────
 WANDB_ENTITY  = "d7047e-group12"
 WANDB_PROJECT = "Project-NVD"
 
-# ── paths ────────────────────────────────────────────────────────────────────
+# ── paths ───────────────────────────────────────────────────────────────────
 SRC_DIR     = Path(__file__).resolve().parent   # …/Project/src
 PROJECT_DIR = SRC_DIR.parent                    # …/Project
 DATA_DIR    = PROJECT_DIR / "data"

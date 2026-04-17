@@ -19,17 +19,8 @@ from collections import defaultdict
 import cv2
 import numpy as np
 import yaml
-from globals import DATA_DIR, OUT_DIR, JPEG_QUALITY
+from globals import DATA_DIR, OUT_DIR, JPEG_QUALITY, SPLIT_MAP
 from frame_metadata import load_video_csv, compute_frame_metadata
-
-# Explicit per-source split assignment
-SPLIT_MAP: dict[str, str] = {
-    "2022-12-02 Asjo 01_stabilized.zip":      "train",
-    "2022-12-04 Bjenberg 02.zip":             "train",
-    "2022-12-23 Asjo 01_HD 5x stab.zip":      "train",
-    "2022-12-03 Nyland 01_stabilized.zip":    "val",
-    "2022-12-23 Bjenberg 02_stabilized.zip":  "test",
-}
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
