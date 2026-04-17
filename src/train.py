@@ -97,6 +97,10 @@ def parse_args() -> argparse.Namespace:
         help="enable paper augmentations (degrees=45, flipud, mosaic, ...)",
     )
     p.add_argument(
+        "--freeze", type=int, default=0,
+        help="freeze first N backbone layers (0=no freeze, 10=full backbone)",
+    )
+    p.add_argument(
         "--no-wandb", action="store_true",
         help="disable wandb logging",
     )
@@ -150,7 +154,7 @@ def main() -> None:
     model = YOLO(str(MODEL_CFG)).load(str(weights))
     register_metadata_callbacks(model)
 
-    aug = AUG_PAPER if args.augment else AUG_NONE
+    aug = AUG_PAPER if args.augment else {}
     model.train(
         data=dataset_yaml,
         task="obb",
@@ -162,6 +166,7 @@ def main() -> None:
         optimizer=args.optimizer,
         lr0=args.lr0,
         patience=args.patience,
+        freeze=args.freeze if args.freeze > 0 else None,
         compile=torch.cuda.is_available(),
         device=DEVICE,
         seed=SEED,
