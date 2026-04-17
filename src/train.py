@@ -32,7 +32,7 @@ DEFAULT_IMGSZ    = 1920
 DEFAULT_BATCH    = 8
 DEFAULT_WORKERS  = 16
 DEFAULT_RUN_NAME = "test-run"
-MODEL_CFG        = SRC_DIR / "configs" / "yolov9c-obb.yaml"
+DEFAULT_MODEL    = "yolov9s"
 RUNS_DIR         = PROJECT_DIR / "runs"
 
 # Augmentation presets (from NVD paper hyp-aug.yaml / hyp-no-aug.yaml)
@@ -101,6 +101,10 @@ def parse_args() -> argparse.Namespace:
         help="freeze first N backbone layers (0=no freeze, 10=full backbone)",
     )
     p.add_argument(
+        "--model", type=str, default=DEFAULT_MODEL, choices=["yolov9s", "yolov9c"],
+        help="model variant to train",
+    )
+    p.add_argument(
         "--no-wandb", action="store_true",
         help="disable wandb logging",
     )
@@ -139,7 +143,7 @@ def main() -> None:
         name=args.run_name,
         config={
             **vars(args),       # all CLI arguments
-            "model":  "yolov9c-obb",
+            "model":  f"{args.model}-obb",
             "device": DEVICE,
             "seed":   SEED,
         },
@@ -147,11 +151,11 @@ def main() -> None:
     )
 
     # Build model from custom OBB config, transfer pretrained backbone weights.
-    # Downloads yolov9c.pt to models/ on first use.
-    weights = MODELS_DIR / "yolov9c.pt"
+    model_cfg = SRC_DIR / "configs" / f"{args.model}-obb.yaml"
+    weights   = MODELS_DIR / f"{args.model}.pt"
     if not weights.exists():
         attempt_download_asset(str(weights))
-    model = YOLO(str(MODEL_CFG)).load(str(weights))
+    model = YOLO(str(model_cfg)).load(str(weights))
     register_metadata_callbacks(model)
 
     aug = AUG_PAPER if args.augment else {}
