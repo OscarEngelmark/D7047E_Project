@@ -13,8 +13,11 @@ python src/train.py --run-name exp-01 --no-wandb
 """
 
 import argparse
+import os
 from typing import Callable, Dict
 import torch
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import yaml
 import wandb
 from ultralytics import YOLO
