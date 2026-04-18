@@ -37,19 +37,12 @@ DEFAULT_MODEL    = "yolov9s"
 RUNS_DIR         = PROJECT_DIR / "runs"
 
 # Augmentation presets (from NVD paper hyp-aug.yaml / hyp-no-aug.yaml)
-AUG_PAPER: Dict[str, float] = dict(
+AUG: Dict[str, float] = dict(
     hsv_h=0.015, hsv_s=0.7,  hsv_v=0.4,
     degrees=45.0, translate=0.1, scale=0.9,
     fliplr=0.5,  flipud=0.5,
     mosaic=1.0,  mixup=0.1,  copy_paste=0.1,
 )
-AUG_NONE: Dict[str, float] = dict(
-    hsv_h=0.0, hsv_s=0.0, hsv_v=0.0,
-    degrees=0.0, translate=0.0, scale=0.0,
-    fliplr=0.0, flipud=0.0,
-    mosaic=0.0, mixup=0.0, copy_paste=0.0,
-)
-
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -190,7 +183,7 @@ def main() -> None:
             args.unfreeze_epoch, args.lr_unfreeze_factor,
         ))
 
-    aug = AUG_PAPER if args.augment else {}
+    aug = AUG if args.augment else {}
     model.train(
         data=dataset_yaml,
         task="obb",
