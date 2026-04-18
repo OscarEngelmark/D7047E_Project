@@ -207,6 +207,7 @@ def main() -> None:
         lr0=args.lr0,
         patience=args.patience,
         freeze=args.freeze if args.freeze > 0 else None,
+        close_mosaic=0,
         compile=torch.cuda.is_available(),
         device=DEVICE,
         seed=SEED,
