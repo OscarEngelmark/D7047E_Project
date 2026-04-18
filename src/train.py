@@ -38,10 +38,17 @@ RUNS_DIR         = PROJECT_DIR / "runs"
 
 # Augmentation presets (from NVD paper hyp-aug.yaml / hyp-no-aug.yaml)
 AUG: Dict[str, float] = dict(
-    hsv_h=0.015, hsv_s=0.7,  hsv_v=0.4,
-    degrees=45.0, translate=0.1, scale=0.9,
-    fliplr=0.5,  flipud=0.5,
-    mosaic=1.0,  mixup=0.1,  copy_paste=0.1,
+    hsv_h=0.015,      # hue shift ±1.5%
+    hsv_s=0.7,        # saturation scale ±70%
+    hsv_v=0.4,        # brightness scale ±40%
+    degrees=45.0,     # random rotation ±45°
+    translate=0.1,    # random translation ±10% of image size
+    scale=0.5,        # random zoom ±50% (simulates altitude variation)
+    fliplr=0.5,       # horizontal flip
+    flipud=0.5,       # vertical flip
+    mosaic=1.0,       # tile 4 images; affine transforms apply to the composite
+    mixup=0.1,        # 10% chance of alpha-blending two mosaics
+    copy_paste=0.1,   # 10% chance of pasting object instances across images
 )
 
 # ── helpers ─────────────────────────────────────────────────────────────────
