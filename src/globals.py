@@ -10,9 +10,8 @@ DEVICE = 0 if torch.cuda.is_available() else "cpu"
 # ── altitude buckets ────────────────────────────────────────────────────────
 # Each entry: (label, lo_metres_inclusive, hi_metres_exclusive)
 ALTITUDE_BUCKETS: List[Tuple[str, float, float]] = [
-    ("120m",  0.0,   125.0),
-    ("130m",  125.0, 140.0),
-    ("150m",  140.0, 175.0),
+    ("100m",  0.0,   125.0),
+    ("150m",  125.0, 175.0),
     ("200m",  175.0, 225.0),
     ("250m",  225.0, float("inf")),
 ]
