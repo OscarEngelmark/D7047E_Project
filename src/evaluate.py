@@ -108,8 +108,8 @@ def main() -> None:
             "test/mAP50-95":  float(box.map),
         })
 
-    print(f"\nTest mAP50:    {results.box.map50:.4f}")
-    print(f"Test mAP50-95: {results.box.map:.4f}")
+    print(f"\nTest mAP50:   {results.box.map50:.4f}")
+    print(f"Test mAP50-95:  {results.box.map:.4f}")
     print(f"Test precision: {results.box.mp:.4f}")
     print(f"Test recall:    {results.box.mr:.4f}")
 
