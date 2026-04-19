@@ -73,22 +73,26 @@ def _bucket_for(altitude: Optional[float]) -> Optional[str]:
 
 # ── ultralytics callbacks ──────────────────────────────────────────────────
 
-def _on_val_start(validator) -> None:
-    """Wrap update_metrics so per-image stats can be paired with im_file."""
-    validator._per_image_stats = []  # list of (im_file, stats_entry)
-    original_update = validator.update_metrics
-    stats_dict = validator.metrics.stats
+def _make_val_start_callback(test_mode: bool = False):
+    def on_val_start(validator) -> None:
+        """Wrap update_metrics so per-image stats can be paired with 
+        im_file."""
+        validator._per_image_stats = []  # list of (im_file, stats_entry)
+        validator._test_mode = test_mode
+        original_update = validator.update_metrics
+        stats_dict = validator.metrics.stats
 
-    def wrapped_update_metrics(preds, batch):
-        before = {k: len(v) for k, v in stats_dict.items()}
-        original_update(preds, batch)
-        # Each call appends one entry per image in the batch
-        n_new = len(stats_dict["tp"]) - before["tp"]
-        for i in range(n_new):
-            entry = {k: stats_dict[k][before[k] + i] for k in stats_dict}
-            validator._per_image_stats.append((batch["im_file"][i], entry))
+        def wrapped_update_metrics(preds, batch):
+            before = {k: len(v) for k, v in stats_dict.items()}
+            original_update(preds, batch)
+            # Each call appends one entry per image in the batch
+            n_new = len(stats_dict["tp"]) - before["tp"]
+            for i in range(n_new):
+                entry = {k: stats_dict[k][before[k] + i] for k in stats_dict}
+                validator._per_image_stats.append((batch["im_file"][i], entry))
 
-    validator.update_metrics = wrapped_update_metrics
+        validator.update_metrics = wrapped_update_metrics
+    return on_val_start
 
 
 def _to_key(s: str) -> str:
@@ -141,7 +145,7 @@ def _log_categorical_buckets(
 
 
 def _on_val_end(validator) -> None:
-    """Group per-image stats by altitude, snow cover, and cloud cover; 
+    """Group per-image stats by altitude, snow cover, and cloud cover;
     log to W&B."""
     global _val_count
     _val_count += 1
@@ -150,6 +154,11 @@ def _on_val_end(validator) -> None:
         return
     if wandb.run is None:
         return
+
+    test_mode = getattr(validator, "_test_mode", False)
+    prefix_alt   = "test_alt"   if test_mode else "val_alt"
+    prefix_snow  = "test_snow"  if test_mode else "val_snow"
+    prefix_cloud = "test_cloud" if test_mode else "val_cloud"
 
     metadata = _load_metadata()
     per_image_stats = validator._per_image_stats
@@ -169,26 +178,29 @@ def _on_val_end(validator) -> None:
             continue
         n_imgs    = len(entries)
         n_targets = sum(int(e["target_cls"].size) for e in entries)
-        log[f"val_alt/{bucket}/n_images"]  = n_imgs
-        log[f"val_alt/{bucket}/n_targets"] = n_targets
+        log[f"{prefix_alt}/{bucket}/n_images"]  = n_imgs
+        log[f"{prefix_alt}/{bucket}/n_targets"] = n_targets
         if n_targets == 0:
             continue
         m = _per_bucket_metrics(entries)
         if m is None:
             continue
         precision, recall, map50, map5095 = m
-        log[f"val_alt/{bucket}/precision"] = precision
-        log[f"val_alt/{bucket}/recall"]    = recall
-        log[f"val_alt/{bucket}/mAP50"]     = map50
-        log[f"val_alt/{bucket}/mAP50-95"]  = map5095
+        log[f"{prefix_alt}/{bucket}/precision"] = precision
+        log[f"{prefix_alt}/{bucket}/recall"]    = recall
+        log[f"{prefix_alt}/{bucket}/mAP50"]     = map50
+        log[f"{prefix_alt}/{bucket}/mAP50-95"]  = map5095
 
     # ── snow cover & cloud cover buckets ────────────────────────────────────
     log.update(_log_categorical_buckets(
-        per_image_stats, metadata, "snow_cover", "val_snow"))
+        per_image_stats, metadata, "snow_cover", prefix_snow))
     log.update(_log_categorical_buckets(
-        per_image_stats, metadata, "cloud_cover", "val_cloud"))
+        per_image_stats, metadata, "cloud_cover", prefix_cloud))
 
-    wandb.log(log, step=_val_count)
+    if test_mode:
+        wandb.run.summary.update(log)
+    else:
+        wandb.log(log, step=_val_count)
 
 
 def _per_bucket_metrics(
@@ -217,7 +229,11 @@ def _per_bucket_metrics(
     return float(p[0]), float(r[0]), float(ap[0, 0]), float(ap[0].mean())
 
 
-def register_metadata_callbacks(model) -> None:
-    """Register the on_val_start / on_val_end callbacks on a YOLO model."""
-    model.add_callback("on_val_start", _on_val_start)
+def register_metadata_callbacks(model, test_mode: bool = False) -> None:
+    """Register the on_val_start / on_val_end callbacks on a YOLO model.
+
+    test_mode: log to wandb.summary (one-shot) instead of wandb.log 
+    (per-epoch).
+    """
+    model.add_callback("on_val_start", _make_val_start_callback(test_mode))
     model.add_callback("on_val_end",   _on_val_end)
