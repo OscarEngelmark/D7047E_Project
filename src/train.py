@@ -51,8 +51,7 @@ AUG: Dict[str, float] = dict(
     flipud=0.5,         # vertical flip
     mosaic=1.0,         # tile 4 images; transforms apply to the composite
     mixup=0.1,          # 10% chance of alpha-blending two mosaics
-    copy_paste=0.3,     # 30% chance of pasting object instances across images
-    perspective=0.0001, # perspective warping
+    copy_paste=0.1,     # 10% chance of pasting object instances across images
 )
 
 # ── helpers ─────────────────────────────────────────────────────────────────
