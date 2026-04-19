@@ -47,33 +47,46 @@ def plot_metrics(
 ) -> Path:
     """Save a 2x2 grid of bar charts — one per metric — to RESULTS_DIR."""
     bucket_labels = [label for label, *_ in ALTITUDE_BUCKETS]
-    labels = ["Overall"] + bucket_labels
+    prefix = "test_alt"
+
+    n_cars_overall = sum(
+        int(bucket_metrics.get(f"{prefix}/{b}/n_targets", 0))
+        for b in bucket_labels
+    )
+    x_labels = [f"Overall\n({n_cars_overall} cars)"]
+    for b in bucket_labels:
+        n = int(bucket_metrics.get(f"{prefix}/{b}/n_targets", 0))
+        x_labels.append(f"{b}\n({n} cars)")
+
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     fig.suptitle(f"Test metrics — {run_name}", fontsize=14)
 
-    prefix = "test_alt"
     for ax, (title, key) in zip(axes.flat, METRICS):
         values = [overall[key]]
         for bucket in bucket_labels:
             v = bucket_metrics.get(f"{prefix}/{bucket}/{key}")
             values.append(v if v is not None else 0.0)
 
-        bars = ax.bar(labels, values)
+        bars = ax.bar(x_labels, values)
         ax.set_title(title)
-        ax.set_ylim(0, 1.05)
-        ax.set_ylabel(title)
+        ax.set_ylim(0, 1.0)
+
         for bar, val in zip(bars, values):
+            inside = val > 0.88
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.02,
+                bar.get_height() - 0.03 if inside else bar.get_height() + 0.02,
                 f"{val:.3f}",
-                ha="center", va="bottom", fontsize=8,
+                ha="center",
+                va="top" if inside else "bottom",
+                fontsize=8,
+                color="white" if inside else "black",
             )
 
     fig.tight_layout()
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"{run_name}.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
 
