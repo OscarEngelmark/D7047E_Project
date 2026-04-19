@@ -59,7 +59,10 @@ def main(opt: argparse.Namespace) -> None:
     print(f"Showing {len(images)} images from '{opt.split}' split."
            "Press any key to advance, 'q' to quit.")
 
+    quit_requested = False
     for img_path in images:
+        if quit_requested:
+            break
         img = cv2.imread(str(img_path))
         if img is None:
             continue
@@ -83,6 +86,7 @@ def main(opt: argparse.Namespace) -> None:
                 cv2.imwrite(str(out_path), img)
                 print(f"Saved {out_path}")
             elif key == ord("q"):
+                quit_requested = True
                 break
             else:
                 break
