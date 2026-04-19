@@ -5,7 +5,7 @@ Usage:
     cd src && python view_data.py --split val --source Nyland
     cd src && python view_data.py --split train --max 200
 
-Press any key to advance, 'q' to quit.
+Press any key to advance, 's' to save, 'q' to quit.
 """
 import argparse
 import sys
@@ -66,17 +66,26 @@ def main(opt: argparse.Namespace) -> None:
         lbl_path = lbl_dir / img_path.with_suffix(".txt").name
         draw_obb(img, lbl_path)
 
-        # Scale down for display if very large
         dh, dw = img.shape[:2]
-        max_dim = 1280
-        if max(dh, dw) > max_dim:
-            scale = max_dim / max(dh, dw)
+        if opt.max_dim and max(dh, dw) > opt.max_dim:
+            scale = opt.max_dim / max(dh, dw)
             img = cv2.resize(img, (int(dw * scale), int(dh * scale)))
 
+        cv2.namedWindow("view_data", cv2.WINDOW_NORMAL)
         cv2.imshow("view_data", img)
-        key = cv2.waitKey(0) & 0xFF
-        if key == ord("q"):
-            break
+        cv2.resizeWindow("view_data", img.shape[1], img.shape[0])
+        while True:
+            key = cv2.waitKey(0) & 0xFF
+            if key == ord("s"):
+                save_dir = g.RESULTS_DIR / "viz"
+                save_dir.mkdir(parents=True, exist_ok=True)
+                out_path = save_dir / img_path.name
+                cv2.imwrite(str(out_path), img)
+                print(f"Saved {out_path}")
+            elif key == ord("q"):
+                break
+            else:
+                break
 
     cv2.destroyAllWindows()
 
@@ -96,6 +105,12 @@ def parse_opt() -> argparse.Namespace:
     parser.add_argument(
         "--max", type=int, default=None,
         help="Maximum number of images to show"
+    )
+    parser.add_argument(
+        "--max-dim", type=int, default=None,
+        dest="max_dim",
+        help="Resize images so the longest side is at most this many pixels "
+             "(default: no resize)",
     )
     return parser.parse_args()
 
