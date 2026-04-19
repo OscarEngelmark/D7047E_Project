@@ -53,40 +53,57 @@ def main() -> None:
 
     videos    = sorted(by_video)
     n_videos  = len(videos)
-    fig, axes = plt.subplots(2, n_videos, figsize=(5 * n_videos, 8), squeeze=False)
+    fig, axes = plt.subplots(
+        2, n_videos, figsize=(5 * n_videos, 8), squeeze=False
+    )
 
     for col, video_stem in enumerate(videos):
-        frames_sorted = sorted(by_video[video_stem], key=lambda e: e["frame_id"])
-        frame_ids = np.array([e["frame_id"]    for e in frames_sorted], dtype=float)
-        diags     = np.array([e["mean_diag_px"] for e in frames_sorted], dtype=float)
-        alts      = np.array([e["altitude_m"]   for e in frames_sorted], dtype=float)
+        frames_sorted = sorted(
+            by_video[video_stem], key=lambda e: e["frame_id"]
+        )
+        frame_ids = np.array(
+            [e["frame_id"]     for e in frames_sorted], dtype=float
+        )
+        diags = np.array(
+            [e["mean_diag_px"] for e in frames_sorted], dtype=float
+        )
+        alts = np.array(
+            [e["altitude_m"]   for e in frames_sorted], dtype=float
+        )
 
         vmeta        = video_csv.get(video_stem, {})
         h_max        = vmeta.get("h_max")
         altitude_str = vmeta.get("altitude_str", "")
 
         # Refit polynomial (new algorithm) from stored diagonals
-        frame_diagonals = {int(e["frame_id"]): e["mean_diag_px"] for e in frames_sorted}
-        _, _, _, coeffs = estimate_altitudes_with_fit(frame_diagonals, h_max or 1.0)
+        frame_diagonals = {
+            int(e["frame_id"]): e["mean_diag_px"] for e in frames_sorted
+        }
+        _, _, _, coeffs = estimate_altitudes_with_fit(
+            frame_diagonals, h_max or 1.0
+        )
 
         span    = max(frame_ids.max() - frame_ids.min(), 1.0)
         t_dense = np.linspace(0.0, 1.0, 1000)
         f_dense = frame_ids.min() + t_dense * span
 
-        # ── top: diagonal scatter + polynomial back-projected to px ──────────
+        # ── top: diagonal scatter + polynomial back-projected to px ─────────
         ax_top = axes[0, col]
         ax_top.scatter(frame_ids, diags, s=12, alpha=0.6, label="raw diagonal")
         if coeffs.size > 0:
             inv_poly = np.polyval(coeffs, t_dense)
             with np.errstate(divide="ignore", invalid="ignore"):
                 diag_poly = np.where(inv_poly > 0, 1.0 / inv_poly, np.nan)
-            ax_top.plot(f_dense, diag_poly, "r-", lw=1.5, label="poly fit (1/l → px)")
+            ax_top.plot(
+                f_dense, diag_poly, "r-", lw=1.5,
+                label="poly fit (1/l → px)",
+            )
         ax_top.set_title(video_stem.replace("_", " "), fontsize=8)
         ax_top.set_xlabel("frame index")
         ax_top.set_ylabel("mean diagonal (px)")
         ax_top.legend(fontsize=7)
 
-        # ── bottom: altitude scatter + polynomial in altitude space ───────────
+        # ── bottom: altitude scatter + polynomial in altitude space ─────────
         ax_bot = axes[1, col]
         ax_bot.scatter(frame_ids, alts, s=12, alpha=0.6, label="est. altitude")
 
