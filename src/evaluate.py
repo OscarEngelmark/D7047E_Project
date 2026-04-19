@@ -14,15 +14,67 @@ python src/evaluate.py --weights runs/<run>/weights/best.pt --run-name my-eval
 
 import argparse
 import os
+from pathlib import Path
+from typing import Dict
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+import matplotlib.pyplot as plt
 import wandb
 from ultralytics import YOLO
 
-from globals import DEVICE, OUT_DIR, PROJECT_DIR, WANDB_ENTITY, WANDB_PROJECT
-from metadata_callback import register_metadata_callbacks
+from globals import (
+    DEVICE, PROJECT_DIR, RESULTS_DIR, WANDB_ENTITY, WANDB_PROJECT,
+)
+from metadata_callback import (
+    get_last_bucket_metrics, register_metadata_callbacks
+)
 from train import write_dataset_yaml
+
+ALTITUDE_BUCKETS = ["120m", "130m", "150m", "200m", "250m"]
+METRICS = [
+    ("Precision",  "precision"),
+    ("Recall",     "recall"),
+    ("mAP50",      "mAP50"),
+    ("mAP50-95",   "mAP50-95"),
+]
+
+
+def plot_metrics(
+    overall: Dict[str, float],
+    bucket_metrics: Dict[str, float],
+    run_name: str,
+) -> Path:
+    """Save a 2x2 grid of bar charts — one per metric — to RESULTS_DIR."""
+    labels = ["Overall"] + ALTITUDE_BUCKETS
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig.suptitle(f"Test metrics — {run_name}", fontsize=14)
+
+    prefix = "test_alt"
+    for ax, (title, key) in zip(axes.flat, METRICS):
+        values = [overall[key]]
+        for bucket in ALTITUDE_BUCKETS:
+            v = bucket_metrics.get(f"{prefix}/{bucket}/{key}")
+            values.append(v if v is not None else 0.0)
+
+        bars = ax.bar(labels, values)
+        ax.set_title(title)
+        ax.set_ylim(0, 1.05)
+        ax.set_ylabel(title)
+        for bar, val in zip(bars, values):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.02,
+                f"{val:.3f}",
+                ha="center", va="bottom", fontsize=8,
+            )
+
+    fig.tight_layout()
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    out = RESULTS_DIR / f"{run_name}.png"
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    return out
 
 
 def parse_args() -> argparse.Namespace:
@@ -98,20 +150,25 @@ def main() -> None:
         name=run_name,
     )
 
-    # Log overall test metrics to summary as well
+    box = results.box
+    overall = {
+        "precision": float(box.mp),
+        "recall":    float(box.mr),
+        "mAP50":     float(box.map50),
+        "mAP50-95":  float(box.map),
+    }
+
     if wandb.run is not None:
-        box = results.box
         wandb.run.summary.update({
-            "test/precision": float(box.mp),
-            "test/recall":    float(box.mr),
-            "test/mAP50":     float(box.map50),
-            "test/mAP50-95":  float(box.map),
+            f"test/{k}": v for k, v in overall.items()
         })
 
-    print(f"\nTest mAP50:   {results.box.map50:.4f}")
-    print(f"Test mAP50-95:  {results.box.map:.4f}")
-    print(f"Test precision: {results.box.mp:.4f}")
-    print(f"Test recall:    {results.box.mr:.4f}")
+    print(f"\nTest mAP50:   {overall['mAP50']:.4f}")
+    print(f"Test mAP50-95:  {overall['mAP50-95']:.4f}")
+    print(f"Test precision: {overall['precision']:.4f}")
+    print(f"Test recall:    {overall['recall']:.4f}")
+    out = plot_metrics(overall, get_last_bucket_metrics(), run_name)
+    print(f"Plot saved to:  {out}")
 
     wandb.finish()
 

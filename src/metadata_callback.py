@@ -50,6 +50,7 @@ ALTITUDE_BUCKETS: List[Tuple[str, float, float]] = [
 
 _metadata_cache: Optional[Dict[str, Dict[str, Any]]] = None
 _val_count: int = 0  # incremented per val pass so W&B logs map to train epochs
+_last_bucket_metrics: Dict[str, float] = {}
 
 
 def _load_metadata() -> Dict[str, Dict[str, Any]]:
@@ -197,6 +198,9 @@ def _on_val_end(validator) -> None:
     log.update(_log_categorical_buckets(
         per_image_stats, metadata, "cloud_cover", prefix_cloud))
 
+    _last_bucket_metrics.clear()
+    _last_bucket_metrics.update(log)
+
     if test_mode:
         wandb.run.summary.update(log)
     else:
@@ -227,6 +231,11 @@ def _per_bucket_metrics(
     if len(p) == 0:
         return None
     return float(p[0]), float(r[0]), float(ap[0, 0]), float(ap[0].mean())
+
+
+def get_last_bucket_metrics() -> Dict[str, float]:
+    """Return the bucket metrics dict populated by the most recent val pass."""
+    return dict(_last_bucket_metrics)
 
 
 def register_metadata_callbacks(model, test_mode: bool = False) -> None:
