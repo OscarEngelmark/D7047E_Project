@@ -24,14 +24,14 @@ import wandb
 from ultralytics import YOLO
 
 from globals import (
-    DEVICE, PROJECT_DIR, RESULTS_DIR, WANDB_ENTITY, WANDB_PROJECT,
+    ALTITUDE_BUCKETS, DEVICE, PROJECT_DIR, RESULTS_DIR,
+    WANDB_ENTITY, WANDB_PROJECT,
 )
 from metadata_callback import (
     get_last_bucket_metrics, register_metadata_callbacks
 )
 from train import write_dataset_yaml
 
-ALTITUDE_BUCKETS = ["120m", "130m", "150m", "200m", "250m"]
 METRICS = [
     ("Precision",  "precision"),
     ("Recall",     "recall"),
@@ -46,14 +46,15 @@ def plot_metrics(
     run_name: str,
 ) -> Path:
     """Save a 2x2 grid of bar charts — one per metric — to RESULTS_DIR."""
-    labels = ["Overall"] + ALTITUDE_BUCKETS
+    bucket_labels = [label for label, *_ in ALTITUDE_BUCKETS]
+    labels = ["Overall"] + bucket_labels
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     fig.suptitle(f"Test metrics — {run_name}", fontsize=14)
 
     prefix = "test_alt"
     for ax, (title, key) in zip(axes.flat, METRICS):
         values = [overall[key]]
-        for bucket in ALTITUDE_BUCKETS:
+        for bucket in bucket_labels:
             v = bucket_metrics.get(f"{prefix}/{bucket}/{key}")
             values.append(v if v is not None else 0.0)
 

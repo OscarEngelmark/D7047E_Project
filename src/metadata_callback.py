@@ -31,19 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import wandb
 
-from globals import OUT_DIR
-
-# Paper Table 4 altitudes are reported as 120 m, 130 m, 130-200 m, 150 m,
-# 200 m, and 250 m. Each bucket below is centred on one of those values; the
-# 130-200 m flights spread across the 130/150/200 buckets according to
-# per-frame estimate. Edges are exclusive on the upper side.
-ALTITUDE_BUCKETS: List[Tuple[str, float, float]] = [
-    ("120m",  0.0,   125.0),
-    ("130m",  125.0, 140.0),
-    ("150m",  140.0, 175.0),
-    ("200m",  175.0, 225.0),
-    ("250m",  225.0, float("inf")),
-]
+from globals import ALTITUDE_BUCKETS, OUT_DIR
 
 
 # ── module state ───────────────────────────────────────────────────────────
