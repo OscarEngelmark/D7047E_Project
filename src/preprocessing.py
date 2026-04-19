@@ -6,7 +6,7 @@ Output structure:
   data/processed/
     images/{train,val,test}/   - JPEG frames that have at least one annotation
     labels/{train,val,test}/   - YOLO OBB .txt files
-                                 (class x1 y1 x2 y2 x3 y3 x4 y4, normalised)
+                                 (class x1 y1 x2 y2 x3 y3 x4 y4, normalized)
     dataset.yaml
     metadata.json
 """
@@ -77,10 +77,12 @@ def xywha_to_corners(
     cx: float, cy: float, w: float, h: float, angle_deg: float,
     img_w: int, img_h: int,
 ) -> np.ndarray:
-    """Convert rotated box (cx, cy, w, h normalised, angle_deg) to 4 normalised corners.
+    """Convert rotated box (cx, cy, w, h normalized, angle_deg) to
+    4 normalized corners.
 
     Rotation is applied in pixel space to match CVAT's coordinate convention.
-    Normalising before rotation distorts angles on non-square images (e.g. 1920×1080).
+    Normalizing before rotation distorts angles on non-square images
+    (e.g. 1920×1080).
     """
     cx_px, cy_px = cx * img_w, cy * img_h
     w_px,  h_px  = w  * img_w, h  * img_h
@@ -178,7 +180,10 @@ def process_video_zip(
                 str(img_dir / f"{stem}.jpg"), frame,
                 [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
             )
-            save_label(lbl_dir / f"{stem}.txt", annotations[frame_id], img_w, img_h)
+            save_label(
+                lbl_dir / f"{stem}.txt",
+                annotations[frame_id], img_w, img_h,
+            )
             _record_metadata(
                 metadata, stem, frame_id,
                 len(annotations[frame_id]),
@@ -233,7 +238,10 @@ def process_frames_zip(
             img=frame,
             params=[cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
         )
-        save_label(lbl_dir / f"{stem}.txt", annotations[frame_id], img_w, img_h)
+        save_label(
+            lbl_dir / f"{stem}.txt",
+            annotations[frame_id], img_w, img_h,
+        )
         _record_metadata(
             metadata, stem, frame_id,
             len(annotations[frame_id]),
