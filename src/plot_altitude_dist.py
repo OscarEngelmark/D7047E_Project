@@ -14,14 +14,13 @@ Usage
 
 import argparse
 import json
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.axes
+import globals as g
+
 from pathlib import Path
 from typing import Any, Dict, List
-
-import matplotlib.axes
-import matplotlib.pyplot as plt
-import numpy as np
-
-from globals import OUT_DIR, RESULTS_DIR
 
 SPLITS = ["train", "val", "test"]
 COLORS = {"train": "#4C72B0", "val": "#DD8452", "test": "#55A868"}
@@ -31,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--out", type=Path,
-        default=RESULTS_DIR / "altitude_dist.png",
+        default=g.RESULTS_DIR / "altitude_dist.png",
         help="Output file path (default: results/altitude_dist.png)",
     )
     p.add_argument(
@@ -84,7 +83,7 @@ def plot_split_histograms(
 def main() -> None:
     args = parse_args()
 
-    with open(OUT_DIR / "metadata.json") as f:
+    with open(g.OUT_DIR / "metadata.json") as f:
         metadata: Dict[str, Dict[str, Any]] = json.load(f)
 
     by_split = load_altitudes(metadata)

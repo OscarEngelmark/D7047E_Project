@@ -23,11 +23,10 @@ Extension points
 from __future__ import annotations
 
 import csv
-from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
+import globals as g
 
-from globals import DATA_DIR
-
+from typing import Any, Dict, List, Optional, Tuple
 
 # ── CSV loading ─────────────────────────────────────────────────────────────
 
@@ -51,7 +50,7 @@ def load_video_csv() -> Dict[str, Dict[str, Any]]:
         snow_cover   : str    – e.g. 'Minimal (0-1 cm)'
         cloud_cover  : str    – e.g. 'Overcast'
     """
-    csv_path = DATA_DIR / "video_data.csv"
+    csv_path = g.DATA_DIR / "video_data.csv"
     result: Dict[str, Dict[str, Any]] = {}
     with open(csv_path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):

@@ -14,17 +14,15 @@ python src/train.py --run-name exp-01 --no-wandb
 
 import os
 import argparse
-from typing import Callable, Dict
 import torch
 import yaml
 import wandb
+import globals as g
+
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
-from globals import (
-    SEED, DEVICE, OUT_DIR, PROJECT_DIR,
-    MODELS_DIR, WANDB_ENTITY, WANDB_PROJECT,
-)
 from metadata_callback import register_metadata_callbacks
+from typing import Callable, Dict
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -38,7 +36,7 @@ DEFAULT_BATCH    = 8
 DEFAULT_WORKERS  = 16
 DEFAULT_RUN_NAME = "test-run"
 DEFAULT_MODEL    = "yolov9s"
-RUNS_DIR         = PROJECT_DIR / "runs"
+RUNS_DIR         = g.PROJECT_DIR / "runs"
 
 # Augmentation presets (from NVD paper hyp-aug.yaml / hyp-no-aug.yaml)
 AUG: Dict[str, float] = dict(
@@ -146,14 +144,14 @@ def write_dataset_yaml() -> str:
     """Regenerate dataset.yaml with the correct absolute path for this 
     machine."""
     cfg = {
-        "path":  str(OUT_DIR.resolve()),
+        "path":  str(g.OUT_DIR.resolve()),
         "train": "images/train",
         "val":   "images/val",
         "test":  "images/test",
         "nc":    1,
         "names": {0: "car"},
     }
-    path = OUT_DIR / "dataset.yaml"
+    path = g.OUT_DIR / "dataset.yaml"
     with open(path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
     return str(path)
@@ -163,28 +161,28 @@ def write_dataset_yaml() -> str:
 
 def main() -> None:
     args = parse_args()
-    print(f"Device: {DEVICE}")
+    print(f"Device: {g.DEVICE}")
 
     dataset_yaml = write_dataset_yaml()
     print(f"Dataset: {dataset_yaml}")
 
     wandb.init(
-        entity=WANDB_ENTITY,
-        project=WANDB_PROJECT,
+        entity=g.WANDB_ENTITY,
+        project=g.WANDB_PROJECT,
         name=args.run_name,
-        dir=str(PROJECT_DIR),
+        dir=str(g.PROJECT_DIR),
         config={
             **vars(args),
             "model":  f"{args.model}-obb",
-            "device": DEVICE,
-            "seed":   SEED,
+            "device": g.DEVICE,
+            "seed":   g.SEED,
         },
         mode="disabled" if args.no_wandb else "online",
     )
 
     # Build model from custom OBB config, transfer pretrained backbone weights.
-    model_cfg = PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
-    weights   = MODELS_DIR / f"{args.model}.pt"
+    model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
+    weights   = g.MODELS_DIR / f"{args.model}.pt"
     if not weights.exists():
         attempt_download_asset(str(weights))
     model = YOLO(str(model_cfg)).load(str(weights))
@@ -210,8 +208,8 @@ def main() -> None:
         close_mosaic=0,
         save_period=10,
         compile=torch.cuda.is_available(),
-        device=DEVICE,
-        seed=SEED,
+        device=g.DEVICE,
+        seed=g.SEED,
         project=str(RUNS_DIR),
         name=args.run_name,
         **aug,

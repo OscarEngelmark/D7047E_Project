@@ -12,25 +12,22 @@ python src/evaluate.py --weights runs/<run>/weights/best.pt --no-wandb
 python src/evaluate.py --weights runs/<run>/weights/best.pt --run-name my-eval
 """
 
-import argparse
 import os
-from pathlib import Path
-from typing import Dict
-
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-
-import matplotlib.pyplot as plt
+import argparse
 import wandb
-from ultralytics import YOLO
+import matplotlib.pyplot as plt
+import globals as g
 
-from globals import (
-    ALTITUDE_BUCKETS, DEVICE, PROJECT_DIR, RESULTS_DIR,
-    WANDB_ENTITY, WANDB_PROJECT,
-)
+from pathlib import Path
+from ultralytics import YOLO
 from metadata_callback import (
     get_last_bucket_metrics, register_metadata_callbacks
 )
 from train import write_dataset_yaml
+from typing import Dict
+
+# Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 METRICS = [
     ("Precision",  "precision"),
@@ -46,7 +43,7 @@ def plot_metrics(
     run_name: str,
 ) -> Path:
     """Save a 2x2 grid of bar charts — one per metric — to RESULTS_DIR."""
-    bucket_labels = [label for label, *_ in ALTITUDE_BUCKETS]
+    bucket_labels = [label for label, *_ in g.ALTITUDE_BUCKETS]
     prefix = "test_alt"
 
     n_cars_overall = sum(
@@ -84,8 +81,8 @@ def plot_metrics(
             )
 
     fig.tight_layout()
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RESULTS_DIR / f"{run_name}.png"
+    g.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    out = g.RESULTS_DIR / f"{run_name}.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
@@ -123,7 +120,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    weights_path = PROJECT_DIR / args.weights
+    weights_path = g.PROJECT_DIR / args.weights
     if not weights_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {weights_path}")
 
@@ -133,19 +130,19 @@ def main() -> None:
     dataset_yaml = write_dataset_yaml()
     print(f"Weights:  {weights_path}")
     print(f"Dataset:  {dataset_yaml}")
-    print(f"Device:   {DEVICE}")
+    print(f"Device:   {g.DEVICE}")
 
     wandb.init(
-        entity=WANDB_ENTITY,
-        project=WANDB_PROJECT,
+        entity=g.WANDB_ENTITY,
+        project=g.WANDB_PROJECT,
         name=run_name,
-        dir=str(PROJECT_DIR),
+        dir=str(g.PROJECT_DIR),
         config={
             "weights": str(weights_path),
             "imgsz":   args.imgsz,
             "batch":   args.batch,
             "split":   "test",
-            "device":  DEVICE,
+            "device":  g.DEVICE,
         },
         mode="disabled" if args.no_wandb else "online",
     )
@@ -159,8 +156,8 @@ def main() -> None:
         imgsz=args.imgsz,
         batch=args.batch,
         workers=args.workers,
-        device=DEVICE,
-        project=str(PROJECT_DIR / "runs"),
+        device=g.DEVICE,
+        project=str(g.PROJECT_DIR / "runs"),
         name=run_name,
     )
 

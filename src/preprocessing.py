@@ -14,13 +14,14 @@ Output structure:
 import json
 import zipfile
 import xml.etree.ElementTree as ET
+import cv2
+import yaml
+import numpy as np
+import globals as g
+
 from pathlib import Path
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
-import cv2
-import numpy as np
-import yaml
-from globals import DATA_DIR, OUT_DIR, JPEG_QUALITY, SPLIT_MAP
 from frame_metadata import load_video_csv, compute_frame_metadata
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -161,7 +162,7 @@ def process_video_zip(
     frame_meta = compute_frame_metadata(annotations, img_w, img_h, vmeta)
 
     print(f"  Extracting video {video_name} to memory …")
-    tmp_path = OUT_DIR / "_tmp_video"
+    tmp_path = g.OUT_DIR / "_tmp_video"
     tmp_path.write_bytes(zf.read(video_name))
 
     cap = cv2.VideoCapture(str(tmp_path))
@@ -178,7 +179,7 @@ def process_video_zip(
             stem = frame_stem(zip_stem, frame_id)
             cv2.imwrite(
                 str(img_dir / f"{stem}.jpg"), frame,
-                [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
+                [cv2.IMWRITE_JPEG_QUALITY, g.JPEG_QUALITY],
             )
             save_label(
                 lbl_dir / f"{stem}.txt",
@@ -236,7 +237,7 @@ def process_frames_zip(
         cv2.imwrite(
             filename=str(img_dir / f"{stem}.jpg"),
             img=frame,
-            params=[cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
+            params=[cv2.IMWRITE_JPEG_QUALITY, g.JPEG_QUALITY]
         )
         save_label(
             lbl_dir / f"{stem}.txt",
@@ -260,14 +261,14 @@ def main() -> None:
 
     # create split subdirectories
     for split in ("train", "val", "test"):
-        (OUT_DIR / "images" / split).mkdir(parents=True, exist_ok=True)
-        (OUT_DIR / "labels" / split).mkdir(parents=True, exist_ok=True)
+        (g.OUT_DIR / "images" / split).mkdir(parents=True, exist_ok=True)
+        (g.OUT_DIR / "labels" / split).mkdir(parents=True, exist_ok=True)
 
     total_saved = 0
     metadata: Dict[str, Dict[str, Any]] = {}
 
-    for zip_name, split in SPLIT_MAP.items():
-        zip_path = DATA_DIR / zip_name
+    for zip_name, split in g.SPLIT_MAP.items():
+        zip_path = g.DATA_DIR / zip_name
         if not zip_path.exists():
             print(f"[SKIP] {zip_name} not found")
             continue
@@ -283,8 +284,8 @@ def main() -> None:
         print(f"\n[{split}] {zip_name}  "
               f"(H_max={vmeta['h_max']:.0f} m, "
               f"snow={vmeta['snow_cover']}, cloud={vmeta['cloud_cover']})")
-        img_dir = OUT_DIR / "images" / split
-        lbl_dir = OUT_DIR / "labels" / split
+        img_dir = g.OUT_DIR / "images" / split
+        lbl_dir = g.OUT_DIR / "labels" / split
 
         with zipfile.ZipFile(zip_path) as zf:
             members     = zf.namelist()
@@ -318,22 +319,22 @@ def main() -> None:
 
     # write dataset.yaml for YOLOv9
     dataset_yaml = {
-        "path": str(OUT_DIR.resolve()),
+        "path": str(g.OUT_DIR.resolve()),
         "train": "images/train",
         "val":   "images/val",
         "test":  "images/test",
         "nc":    1,
         "names": {0: "car"},
     }
-    yaml_path = OUT_DIR / "dataset.yaml"
+    yaml_path = g.OUT_DIR / "dataset.yaml"
     with open(yaml_path, "w") as f:
         yaml.dump(dataset_yaml, f, default_flow_style=False, sort_keys=False)
 
-    metadata_path = OUT_DIR / "metadata.json"
+    metadata_path = g.OUT_DIR / "metadata.json"
     with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2, sort_keys=True)
 
-    print(f"\nDone. {total_saved} total frames → {OUT_DIR}")
+    print(f"\nDone. {total_saved} total frames → {g.OUT_DIR}")
     print(f"dataset.yaml written to {yaml_path}")
     print(f"metadata.json written to"
           f"{metadata_path} ({len(metadata)} entries)")

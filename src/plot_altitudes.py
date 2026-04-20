@@ -17,22 +17,21 @@ Usage
 
 import argparse
 import json
+import numpy as np
+import matplotlib.pyplot as plt
+import globals as g
+
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-from globals import OUT_DIR, RESULTS_DIR
 from frame_metadata import load_video_csv, estimate_altitudes_with_fit
+from typing import Any, Dict, List
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--out", type=Path,
-        default=RESULTS_DIR / "altitudes.png",
+        default=g.RESULTS_DIR / "altitudes.png",
         help="where to save the figure (default: data/processed/altitude.png)",
     )
     return p.parse_args()
@@ -41,7 +40,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    with open(OUT_DIR / "metadata.json") as f:  # data/processed/metadata.json
+    with open(g.OUT_DIR / "metadata.json") as f:
         metadata: Dict[str, Dict[str, Any]] = json.load(f)
 
     video_csv = load_video_csv()

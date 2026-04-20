@@ -25,14 +25,12 @@ Usage
 from __future__ import annotations
 
 import json
+import wandb
+import numpy as np
+import globals as g
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
-
-import numpy as np
-import wandb
-
-from globals import ALTITUDE_BUCKETS, OUT_DIR
-
 
 # ── module state ───────────────────────────────────────────────────────────
 
@@ -44,7 +42,7 @@ _last_bucket_metrics: Dict[str, float] = {}
 def _load_metadata() -> Dict[str, Dict[str, Any]]:
     global _metadata_cache
     if _metadata_cache is None:
-        path = OUT_DIR / "metadata.json"
+        path = g.OUT_DIR / "metadata.json"
         with open(path) as f:
             _metadata_cache = json.load(f)
     assert _metadata_cache is not None
@@ -54,7 +52,7 @@ def _load_metadata() -> Dict[str, Dict[str, Any]]:
 def _bucket_for(altitude: Optional[float]) -> Optional[str]:
     if altitude is None:
         return None
-    for label, lo, hi in ALTITUDE_BUCKETS:
+    for label, lo, hi in g.ALTITUDE_BUCKETS:
         if lo <= altitude < hi:
             return label
     return None
@@ -153,7 +151,7 @@ def _on_val_end(validator) -> None:
     per_image_stats = validator._per_image_stats
 
     # ── altitude buckets ────────────────────────────────────────────────────
-    bucketed = {b[0]: [] for b in ALTITUDE_BUCKETS}
+    bucketed = {b[0]: [] for b in g.ALTITUDE_BUCKETS}
     bucketed["unknown"] = []
     for im_file, entry in per_image_stats:
         stem = Path(im_file).stem
