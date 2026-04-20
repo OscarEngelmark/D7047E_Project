@@ -12,12 +12,10 @@ python src/train.py --epochs 50 --batch 8
 python src/train.py --run-name exp-01 --no-wandb
 """
 
-import argparse
 import os
+import argparse
 from typing import Callable, Dict
 import torch
-
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import yaml
 import wandb
 from ultralytics import YOLO
@@ -27,6 +25,9 @@ from globals import (
     MODELS_DIR, WANDB_ENTITY, WANDB_PROJECT,
 )
 from metadata_callback import register_metadata_callbacks
+
+# Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 # ── defaults ────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ AUG: Dict[str, float] = dict(
     hsv_v=0.4,          # brightness scale ±40%
     degrees=45.0,       # random rotation ±45°
     translate=0.1,      # random translation ±10% of image size
-    scale=0.8,          # random zoom ±90% (simulates altitude variation)
+    scale=0.8,          # random zoom ±80% (simulates altitude variation)
     fliplr=0.5,         # horizontal flip
     flipud=0.5,         # vertical flip
     mosaic=1.0,         # tile 4 images; transforms apply to the composite
