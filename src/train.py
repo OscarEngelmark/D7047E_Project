@@ -45,12 +45,12 @@ AUG: Dict[str, float] = dict(
     hsv_v=0.4,          # brightness scale ±40%
     degrees=45.0,       # random rotation ±45°
     translate=0.1,      # random translation ±10% of image size
-    scale=0.8,          # random zoom ±80% (simulates altitude variation)
+    scale=0.7,          # random zoom ±80% (simulates altitude variation)
     fliplr=0.5,         # horizontal flip
     flipud=0.5,         # vertical flip
-    mosaic=1.0,         # tile 4 images; transforms apply to the composite
+    mosaic=0.0,         # tile 4 images; transforms apply to the composite
     mixup=0.1,          # 10% chance of alpha-blending two mosaics
-    copy_paste=0.1,     # 10% chance of pasting object instances across images
+    copy_paste=0.5,     # 10% chance of pasting object instances across images
 )
 
 # ── helpers ─────────────────────────────────────────────────────────────────
