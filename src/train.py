@@ -57,7 +57,7 @@ AUG: Dict[str, float] = dict(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Train YOLOv9c-OBB for car detection"
+        description="Train a YOLOv9-OBB model for car detection"
     )
     p.add_argument(
         "--epochs", type=int, default=DEFAULT_EPOCHS,
