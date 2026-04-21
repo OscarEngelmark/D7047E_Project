@@ -1,8 +1,8 @@
 """
 Baseline YOLOv9-OBB training script.
 
-Builds the model from src/configs and transfers backbone weights from the 
-pretrained COCO checkpoint (downloaded automatically by ultralytics on first 
+Builds the model from src/configs and transfers backbone weights from the
+pretrained COCO checkpoint (downloaded automatically by ultralytics on first
 use).
 
 Usage
@@ -10,6 +10,7 @@ Usage
 python src/train.py                         # all defaults
 python src/train.py --epochs 50 --batch 8
 python src/train.py --run-name exp-01 --no-wandb
+python src/train.py --altitude-aware-scale --alt-min 100 --alt-max 300
 """
 
 import os
@@ -21,6 +22,7 @@ import globals as g
 
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
+from altitude_augment import AltitudeAwareOBBTrainer
 from metadata_callback import register_metadata_callbacks
 from typing import Callable, Dict
 
@@ -116,6 +118,28 @@ def parse_args() -> argparse.Namespace:
         choices=["yolov9s", "yolov9c"], help="model variant to train",
     )
     p.add_argument(
+        "--altitude-aware-scale", action="store_true",
+        dest="altitude_aware_scale",
+        help=(
+            "use altitude-aware scale augmentation: sample "
+            "h_target ~ U(alt_min, alt_max), apply s = h / h_target"
+        ),
+    )
+    p.add_argument(
+        "--alt-min", type=float, default=100.0, dest="alt_min",
+        help=(
+            "lower bound of target altitude range in metres "
+            "(altitude-aware scale only, default: 100)"
+        ),
+    )
+    p.add_argument(
+        "--alt-max", type=float, default=300.0, dest="alt_max",
+        help=(
+            "upper bound of target altitude range in metres "
+            "(altitude-aware scale only, default: 300)"
+        ),
+    )
+    p.add_argument(
         "--no-wandb", action="store_true",
         help="disable wandb logging",
     )
@@ -166,6 +190,10 @@ def main() -> None:
     dataset_yaml = write_dataset_yaml()
     print(f"Dataset: {dataset_yaml}")
 
+    trainer_cls = (
+        AltitudeAwareOBBTrainer if args.altitude_aware_scale else None
+    )
+
     wandb.init(
         entity=g.WANDB_ENTITY,
         project=g.WANDB_PROJECT,
@@ -193,7 +221,12 @@ def main() -> None:
         ))
 
     aug = AUG if args.augment else {}
+    alt_kwargs = (
+        {"alt_min": args.alt_min, "alt_max": args.alt_max}
+        if args.altitude_aware_scale else {}
+    )
     model.train(
+        trainer=trainer_cls,
         data=dataset_yaml,
         task="obb",
         epochs=args.epochs,
@@ -213,6 +246,7 @@ def main() -> None:
         project=str(RUNS_DIR),
         name=args.run_name,
         **aug,
+        **alt_kwargs,
     )
 
     wandb.finish()
