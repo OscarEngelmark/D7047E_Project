@@ -76,8 +76,7 @@ class AltitudeAwareRandomPerspective(RandomPerspective):
         super().__init__(**kwargs)
         self.alt_min = alt_min
         self.alt_max = alt_max
-        self._scale_lo: float = 1.0 - self.scale
-        self._scale_hi: float = 1.0 + self.scale
+        self._altitude_m: float | None = None
 
     def affine_transform(
         self,
@@ -96,7 +95,13 @@ class AltitudeAwareRandomPerspective(RandomPerspective):
 
         R = np.eye(3, dtype=np.float32)
         a = random.uniform(-self.degrees, self.degrees)
-        s = random.uniform(self._scale_lo, self._scale_hi)
+        if self._altitude_m is not None:
+            h_target = random.uniform(self.alt_min, self.alt_max)
+            s = float(np.clip(
+                self._altitude_m / h_target, SCALE_FLOOR, SCALE_CEILING
+            ))
+        else:
+            s = random.uniform(1.0 - self.scale, 1.0 + self.scale)
         R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
 
         S = np.eye(3, dtype=np.float32)
@@ -142,13 +147,9 @@ class AltitudeAwareRandomPerspective(RandomPerspective):
 
     def __call__(self, labels: dict) -> dict:
         altitude_m = labels.get("altitude_m")
-        if altitude_m is not None:
-            self._scale_lo, self._scale_hi = compute_scale_bounds(
-                float(altitude_m), self.alt_min, self.alt_max
-            )
-        else:
-            self._scale_lo = 1.0 - self.scale
-            self._scale_hi = 1.0 + self.scale
+        self._altitude_m = (
+            float(altitude_m) if altitude_m is not None else None
+        )
         return super().__call__(labels)
 
 
