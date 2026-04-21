@@ -2,20 +2,27 @@
 Plot altitude distribution of cars per dataset split.
 
 By default (scale=0, no mosaic) the raw estimated altitudes are shown.
-Pass --scale and/or --mosaic to simulate YOLOv9 augmentation on the training
-split:
 
-    apparent_altitude = actual_altitude * mosaic_factor / U(1-scale, 1+scale)
+--scale / --mosaic: simulate standard YOLOv9 scale augmentation:
+    apparent_altitude = actual * mosaic_factor / U(1-scale, 1+scale)
 
-mosaic_factor = 2 when --mosaic is set (each sub-image fills ~half the linear
-output dimension), 1 otherwise. Augmented altitudes are weighted by
-n_boxes / n_samples so total car count is preserved.
+--altitude-aware: simulate altitude-aware augmentation where for each
+training frame at altitude h, a target altitude is sampled uniformly over
+[alt_min, alt_max] and the required scale factor s = h / h_target is applied:
+    apparent_altitude = h_target  (exactly, when s is within clamp bounds)
+Scale factors are clamped to [0.1, 4.0] to stay within feasible image
+scaling limits; frames where clamping alters the target are still included
+but their apparent altitude will differ from h_target.
+
+Augmented altitudes are weighted by n_boxes / n_samples so total car count
+is preserved.
 
 Usage
 -----
     cd src && python plot_altitude_dist.py
-    cd src && python plot_altitude_dist.py --scale 0.8 --mosaic
-    cd src && python plot_altitude_dist.py --scale 0.5
+    cd src && python plot_altitude_dist.py --scale 0.7
+    cd src && python plot_altitude_dist.py --altitude-aware
+    cd src && python plot_altitude_dist.py --altitude-aware --alt-min 80 --alt-max 400
     cd src && python plot_altitude_dist.py --out results/altitude_dist.png
 """
 
@@ -36,6 +43,8 @@ TRAIN_AUG_COLOR = "#9467BD"
 
 DEFAULT_SCALE = 0.0
 DEFAULT_N_SAMPLES = 100
+SCALE_FLOOR = 0.1   # minimum feasible image scale factor
+SCALE_CEILING = 4.0  # maximum feasible image scale factor
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +76,21 @@ def parse_args() -> argparse.Namespace:
             f"Augmentation draws per training frame "
             f"(default: {DEFAULT_N_SAMPLES})"
         ),
+    )
+    p.add_argument(
+        "--altitude-aware", action="store_true", dest="altitude_aware",
+        help=(
+            "Simulate altitude-aware scale augmentation: sample "
+            "h_target ~ U(alt_min, alt_max) per frame, apply s = h/h_target"
+        ),
+    )
+    p.add_argument(
+        "--alt-min", type=float, default=80.0, dest="alt_min",
+        help="Lower bound of target altitude range in metres (default: 80)",
+    )
+    p.add_argument(
+        "--alt-max", type=float, default=400.0, dest="alt_max",
+        help="Upper bound of target altitude range in metres (default: 400)",
     )
     p.add_argument(
         "--seed", type=int, default=g.SEED,
@@ -122,6 +146,32 @@ def augment_train(
     return aug_alts[mask].tolist(), aug_weights[mask].tolist()
 
 
+def augment_train_altitude_aware(
+    alts: List[float],
+    weights: List[float],
+    alt_min: float,
+    alt_max: float,
+    n_samples: int,
+    rng: np.random.Generator,
+) -> tuple[List[float], List[float]]:
+    """Altitude-aware augmentation: sample h_target ~ U(alt_min, alt_max),
+    compute s = h / h_target, clamp to [SCALE_FLOOR, SCALE_CEILING], then
+    apparent_altitude = h / s.  When s is unclamped, apparent_altitude ==
+    h_target exactly, giving a flat distribution over [alt_min, alt_max].
+    """
+    alts_arr = np.array(alts)
+    w_arr = np.array(weights) / n_samples
+
+    # h_target shape: (n_frames, n_samples)
+    h_target = rng.uniform(alt_min, alt_max, size=(len(alts), n_samples))
+    s = alts_arr[:, None] / h_target
+    s = np.clip(s, SCALE_FLOOR, SCALE_CEILING)
+
+    aug_alts = (alts_arr[:, None] / s).ravel()
+    aug_weights = np.repeat(w_arr, n_samples)
+    return aug_alts.tolist(), aug_weights.tolist()
+
+
 def plot_histograms(
     by_split: Dict[str, Dict[str, List[float]]],
     aug_alts: List[float],
@@ -172,16 +222,43 @@ def main() -> None:
     if not by_split["train"]["alts"]:
         raise ValueError("No training data found in metadata.json")
 
-    train_augmented = args.scale != 0.0 or args.mosaic
-    aug_alts, aug_weights = augment_train(
-        by_split["train"]["alts"],
-        by_split["train"]["weights"],
-        scale=args.scale,
-        n_samples=args.n_samples,
-        rng=rng,
-        mosaic=args.mosaic,
-    )
+    if args.altitude_aware:
+        aug_alts, aug_weights = augment_train_altitude_aware(
+            by_split["train"]["alts"],
+            by_split["train"]["weights"],
+            alt_min=args.alt_min,
+            alt_max=args.alt_max,
+            n_samples=args.n_samples,
+            rng=rng,
+        )
+        train_augmented = True
+        title = (
+            f"Altitude distribution — altitude-aware augmentation "
+            f"(target: {args.alt_min:.0f}–{args.alt_max:.0f} m)"
+        )
+    else:
+        aug_alts, aug_weights = augment_train(
+            by_split["train"]["alts"],
+            by_split["train"]["weights"],
+            scale=args.scale,
+            n_samples=args.n_samples,
+            rng=rng,
+            mosaic=args.mosaic,
+        )
+        train_augmented = args.scale != 0.0 or args.mosaic
+        if train_augmented:
+            mosaic_str = (
+                f"2/U(1±{args.scale})" if args.mosaic
+                else f"1/U(1±{args.scale})"
+            )
+            title = (
+                f"Altitude distribution — train augmented "
+                f"(scale={args.scale}, factor={mosaic_str})"
+            )
+        else:
+            title = "Altitude distribution by split"
 
+    x_max = args.alt_max if args.altitude_aware else 500.0
     fig, axes = plt.subplots(
         3, 1, figsize=(12, 10), sharex=True, squeeze=False
     )
@@ -189,21 +266,9 @@ def main() -> None:
         by_split, aug_alts, aug_weights,
         bins=args.bins,
         axes=list(axes[:, 0]),
-        x_max=500.0,
+        x_max=x_max,
         train_augmented=train_augmented,
     )
-
-    if train_augmented:
-        mosaic_str = (
-            f"2/U(1±{args.scale})" if args.mosaic
-            else f"1/U(1±{args.scale})"
-        )
-        title = (
-            f"Altitude distribution — train augmented "
-            f"(scale={args.scale}, factor={mosaic_str})"
-        )
-    else:
-        title = "Altitude distribution by split"
     fig.suptitle(title, fontsize=11)
 
     plt.tight_layout()
