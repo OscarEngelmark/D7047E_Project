@@ -19,11 +19,11 @@ is preserved.
 
 Usage
 -----
-    cd src && python plot_altitude_dist.py
-    cd src && python plot_altitude_dist.py --scale 0.7
-    cd src && python plot_altitude_dist.py --altitude-aware
-    cd src && python plot_altitude_dist.py --altitude-aware --alt-min 80 --alt-max 400
-    cd src && python plot_altitude_dist.py --out results/altitude_dist.png
+    python plot_altitude_dist.py
+    python plot_altitude_dist.py --scale 0.7
+    python plot_altitude_dist.py --altitude-aware
+    python plot_altitude_dist.py --altitude-aware --alt-min 80 --alt-max 400
+    python plot_altitude_dist.py --out results/altitude_dist.png
 """
 
 import argparse
