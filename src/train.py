@@ -24,7 +24,7 @@ from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
 from altitude_augment import AltitudeAwareOBBTrainer
 from metadata_callback import register_metadata_callbacks
-from typing import Callable, Dict
+from typing import Callable
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -40,20 +40,6 @@ DEFAULT_RUN_NAME = "test-run"
 DEFAULT_MODEL    = "yolov9s"
 RUNS_DIR         = g.PROJECT_DIR / "runs"
 
-# Augmentation presets (from NVD paper hyp-aug.yaml / hyp-no-aug.yaml)
-AUG: Dict[str, float] = dict(
-    hsv_h=0.015,        # hue shift ±1.5%
-    hsv_s=0.7,          # saturation scale ±70%
-    hsv_v=0.4,          # brightness scale ±40%
-    degrees=45.0,       # random rotation ±45°
-    translate=0.1,      # random translation ±10% of image size
-    scale=0.7,          # random zoom ±80% (simulates altitude variation)
-    fliplr=0.5,         # horizontal flip
-    flipud=0.5,         # vertical flip
-    mosaic=0.0,         # tile 4 images; transforms apply to the composite
-    mixup=0.1,          # 10% chance of alpha-blending two mosaics
-    copy_paste=0.5,     # 10% chance of pasting object instances across images
-)
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -98,8 +84,11 @@ def parse_args() -> argparse.Namespace:
         help="early stopping patience in epochs (0 to disable)",
     )
     p.add_argument(
-        "--augment", action="store_true",
-        help="enable paper augmentations (degrees=45, flipud, mosaic, ...)",
+        "--augment", type=str, default=None, metavar="PRESET",
+        help=(
+            "augmentation preset filename stem from augmentations/ "
+            "(e.g. --augment paper loads augmentations/paper.yaml)"
+        ),
     )
     p.add_argument(
         "--freeze", type=int, default=0,
@@ -220,7 +209,17 @@ def main() -> None:
             args.unfreeze_epoch, args.lr_unfreeze_factor,
         ))
 
-    aug = AUG if args.augment else {}
+    if args.augment:
+        aug_path = g.AUGS_DIR / f"{args.augment}.yaml"
+        if not aug_path.exists():
+            raise FileNotFoundError(
+                f"Augmentation preset not found: {aug_path}\n"
+                f"Available: {[p.stem for p in g.AUGS_DIR.glob('*.yaml')]}"
+            )
+        with open(aug_path) as f:
+            aug = yaml.safe_load(f)
+    else:
+        aug = {}
     alt_kwargs = (
         {"alt_min": args.alt_min, "alt_max": args.alt_max}
         if args.altitude_aware_scale else {}
