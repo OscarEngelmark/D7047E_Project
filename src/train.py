@@ -204,6 +204,7 @@ def main() -> None:
         attempt_download_asset(str(weights))
     model = YOLO(str(model_cfg)).load(str(weights))
     register_metadata_callbacks(model)
+
     if args.freeze > 0 and args.unfreeze_epoch > 0:
         model.add_callback("on_train_epoch_start", make_unfreeze_callback(
             args.unfreeze_epoch, args.lr_unfreeze_factor,
@@ -220,10 +221,12 @@ def main() -> None:
             aug = yaml.safe_load(f)
     else:
         aug = {}
+
     alt_kwargs = (
         {"alt_min": args.alt_min, "alt_max": args.alt_max}
         if args.altitude_aware_scale else {}
     )
+
     model.train(
         trainer=trainer_cls,
         data=dataset_yaml,
