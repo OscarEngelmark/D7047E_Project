@@ -85,11 +85,11 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
-        "--alt-min", type=float, default=80.0, dest="alt_min",
+        "--alt-min", type=float, default=100.0, dest="alt_min",
         help="Lower bound of target altitude range in metres (default: 80)",
     )
     p.add_argument(
-        "--alt-max", type=float, default=400.0, dest="alt_max",
+        "--alt-max", type=float, default=300.0, dest="alt_max",
         help="Upper bound of target altitude range in metres (default: 400)",
     )
     p.add_argument(
@@ -209,6 +209,10 @@ def plot_histograms(
         ax.set_ylabel("Car count")
         ax.legend(fontsize=9)
 
+    y_max = max(ax.get_ylim()[1] for ax in axes)
+    for ax in axes:
+        ax.set_ylim(top=y_max)
+
 
 def main() -> None:
     args = parse_args()
@@ -258,7 +262,6 @@ def main() -> None:
         else:
             title = "Altitude distribution by split"
 
-    x_max = args.alt_max if args.altitude_aware else 500.0
     fig, axes = plt.subplots(
         3, 1, figsize=(12, 10), sharex=True, squeeze=False
     )
@@ -266,7 +269,7 @@ def main() -> None:
         by_split, aug_alts, aug_weights,
         bins=args.bins,
         axes=list(axes[:, 0]),
-        x_max=x_max,
+        x_max=350.0,
         train_augmented=train_augmented,
     )
     fig.suptitle(title, fontsize=11)
