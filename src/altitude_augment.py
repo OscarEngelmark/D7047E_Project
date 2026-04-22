@@ -178,13 +178,19 @@ def _swap_affine(
 
 
 class AltitudeAwareMosaic(Mosaic):
-    """Mosaic that preserves altitude_m as the mean of the four frames.
+    """Mosaic that preserves altitude_m as the effective altitude.
 
     Ultralytics' Mosaic._cat_labels builds a fresh labels dict that drops
     all non-standard keys.  This override re-inserts altitude_m as the
-    mean of whichever component frames carry an altitude estimate, so that
+    effective apparent altitude of the mosaic, so that
     AltitudeAwareRandomPerspective can still fire with a valid altitude
     after mosaicing.
+
+    Mosaic places n frames (each imgsz x imgsz) on a sqrt(n)*imgsz canvas
+    then crops back to imgsz.  Each frame therefore contributes at
+    1/sqrt(n) linear scale, making objects appear sqrt(n)x further away.
+    We store sqrt(n) * mean(h_i) so the perspective transform targets the
+    correct h_target.
     """
 
     def _cat_labels(self, mosaic_labels: list) -> dict:
@@ -195,7 +201,9 @@ class AltitudeAwareMosaic(Mosaic):
             if lbl.get("altitude_m") is not None
         ]
         if alts:
-            final_labels["altitude_m"] = sum(alts) / len(alts)
+            mosaic_factor = int(self.n ** 0.5)  # 2 for n=4, 3 for n=9
+            mean_alt = sum(alts) / len(alts)
+            final_labels["altitude_m"] = mosaic_factor * mean_alt
         return final_labels
 
 
