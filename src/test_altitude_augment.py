@@ -7,11 +7,13 @@ Checks:
      affine_transform are approximately uniform over [alt_min, alt_max]
      — verifying training matches plot_altitude_dist.py simulation
   3. Fallback: scale drawn from [1-scale, 1+scale] when no altitude
+  4. AltitudeAwareMosaic._cat_labels: mean altitude propagation
 """
 
 import random
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -21,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from altitude_augment import (
     SCALE_CEILING,
     SCALE_FLOOR,
+    AltitudeAwareMosaic,
     AltitudeAwareRandomPerspective,
     compute_scale_bounds,
 )
@@ -160,7 +163,7 @@ class TestFallback:
         )
 
     def test_altitude_aware_scale_can_exceed_hyp_scale(self):
-        """Altitude-aware mode can produce scales outside 
+        """Altitude-aware mode can produce scales outside
         [1-scale, 1+scale]."""
         hyp_scale = 0.1   # tight symmetric range
         t = _make_transform(scale=hyp_scale)
@@ -169,3 +172,63 @@ class TestFallback:
         assert max(scales) > 1.0 + hyp_scale, (
             "Expected altitude-aware scales to exceed hyp.scale bounds"
         )
+
+
+# ── AltitudeAwareMosaic ──────────────────────────────────────────────────────
+
+def _make_mosaic_labels(altitudes: list[float | None]) -> list[dict]:
+    """Build minimal label dicts as _cat_labels receives them."""
+    from ultralytics.utils.instance import Instances
+    labels = []
+    for alt in altitudes:
+        lbl = {
+            "im_file": "dummy.jpg",
+            "ori_shape": (64, 64),
+            "cls": np.zeros((0,), dtype=np.float32),
+            "instances": Instances(
+                bboxes=np.zeros((0, 4), dtype=np.float32),
+                segments=np.zeros((0, 0, 2), dtype=np.float32),
+                keypoints=None,
+                bbox_format="xyxy",
+                normalized=False,
+            ),
+        }
+        if alt is not None:
+            lbl["altitude_m"] = float(alt)
+        labels.append(lbl)
+    return labels
+
+
+class TestAltitudeAwareMosaic:
+    def _make_mosaic(self) -> AltitudeAwareMosaic:
+        mock_dataset = MagicMock()
+        mock_dataset.cache = False
+        return AltitudeAwareMosaic(
+            dataset=mock_dataset, imgsz=64, p=1.0, n=4
+        )
+
+    def test_mean_of_four_altitudes(self):
+        mosaic = self._make_mosaic()
+        labels = _make_mosaic_labels([100.0, 150.0, 200.0, 250.0])
+        result = mosaic._cat_labels(labels)
+        assert result["altitude_m"] == pytest.approx(175.0)
+
+    def test_partial_altitude_coverage(self):
+        """Mean is computed only over frames that have altitude_m."""
+        mosaic = self._make_mosaic()
+        labels = _make_mosaic_labels([120.0, None, 180.0, None])
+        result = mosaic._cat_labels(labels)
+        assert result["altitude_m"] == pytest.approx(150.0)
+
+    def test_no_altitudes_absent_from_result(self):
+        """altitude_m should not appear in result when no frame has it."""
+        mosaic = self._make_mosaic()
+        labels = _make_mosaic_labels([None, None, None, None])
+        result = mosaic._cat_labels(labels)
+        assert "altitude_m" not in result
+
+    def test_single_altitude_used_directly(self):
+        mosaic = self._make_mosaic()
+        labels = _make_mosaic_labels([200.0, None, None, None])
+        result = mosaic._cat_labels(labels)
+        assert result["altitude_m"] == pytest.approx(200.0)
