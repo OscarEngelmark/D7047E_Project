@@ -183,7 +183,7 @@ def main() -> None:
         AltitudeAwareOBBTrainer if args.altitude_aware_scale else None
     )
 
-    wandb.init(
+    with wandb.init(
         entity=g.WANDB_ENTITY,
         project=g.WANDB_PROJECT,
         name=args.run_name,
@@ -195,63 +195,64 @@ def main() -> None:
             "seed":   g.SEED,
         },
         mode="disabled" if args.no_wandb else "online",
-    )
+    ):
+        # Build model from custom OBB config
+        model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
+        weights   = g.MODELS_DIR / f"{args.model}.pt" # pretrained COCO weights
+        if not weights.exists():
+            attempt_download_asset(str(weights))
+        model = YOLO(str(model_cfg)).load(str(weights))
+        register_metadata_callbacks(model)
 
-    # Build model from custom OBB config, transfer pretrained backbone weights.
-    model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
-    weights   = g.MODELS_DIR / f"{args.model}.pt"
-    if not weights.exists():
-        attempt_download_asset(str(weights))
-    model = YOLO(str(model_cfg)).load(str(weights))
-    register_metadata_callbacks(model)
-
-    if args.freeze > 0 and args.unfreeze_epoch > 0:
-        model.add_callback("on_train_epoch_start", make_unfreeze_callback(
-            args.unfreeze_epoch, args.lr_unfreeze_factor,
-        ))
-
-    if args.augment:
-        aug_path = g.AUGS_DIR / f"{args.augment}.yaml"
-        if not aug_path.exists():
-            raise FileNotFoundError(
-                f"Augmentation preset not found: {aug_path}\n"
-                f"Available: {[p.stem for p in g.AUGS_DIR.glob('*.yaml')]}"
+        if args.freeze > 0 and args.unfreeze_epoch > 0:
+            model.add_callback(
+                "on_train_epoch_start",
+                make_unfreeze_callback(
+                    args.unfreeze_epoch, args.lr_unfreeze_factor,
+                ),
             )
-        with open(aug_path) as f:
-            aug = yaml.safe_load(f)
-    else:
-        aug = {}
 
-    alt_kwargs = (
-        {"alt_min": args.alt_min, "alt_max": args.alt_max}
-        if args.altitude_aware_scale else {}
-    )
+        if args.augment:
+            aug_path = g.AUGS_DIR / f"{args.augment}.yaml"
+            if not aug_path.exists():
+                raise FileNotFoundError(
+                    f"Augmentation preset not found: {aug_path}\n"
+                    f"Available: "
+                    f"{[p.stem for p in g.AUGS_DIR.glob('*.yaml')]}"
+                )
+            with open(aug_path) as f:
+                aug = yaml.safe_load(f)
+        else:
+            aug = {}
 
-    model.train(
-        trainer=trainer_cls,
-        data=dataset_yaml,
-        task="obb",
-        epochs=args.epochs,
-        imgsz=args.imgsz,
-        batch=args.batch,
-        workers=args.workers,
-        cache=args.cache if args.cache != "off" else False,
-        optimizer=args.optimizer,
-        lr0=args.lr0,
-        patience=args.patience,
-        freeze=args.freeze if args.freeze > 0 else None,
-        close_mosaic=0,
-        save_period=10,
-        compile=torch.cuda.is_available(),
-        device=g.DEVICE,
-        seed=g.SEED,
-        project=str(RUNS_DIR),
-        name=args.run_name,
-        **aug,
-        **alt_kwargs,
-    )
+        alt_kwargs = (
+            {"alt_min": args.alt_min, "alt_max": args.alt_max}
+            if args.altitude_aware_scale else {}
+        )
 
-    wandb.finish()
+        model.train(
+            trainer=trainer_cls,
+            data=dataset_yaml,
+            task="obb",
+            epochs=args.epochs,
+            imgsz=args.imgsz,
+            batch=args.batch,
+            workers=args.workers,
+            cache=args.cache if args.cache != "off" else False,
+            optimizer=args.optimizer,
+            lr0=args.lr0,
+            patience=args.patience,
+            freeze=args.freeze if args.freeze > 0 else None,
+            close_mosaic=0,
+            save_period=10,
+            compile=torch.cuda.is_available(),
+            device=g.DEVICE,
+            seed=g.SEED,
+            project=str(RUNS_DIR),
+            name=args.run_name,
+            **aug,
+            **alt_kwargs,
+        )
 
 
 if __name__ == "__main__":
