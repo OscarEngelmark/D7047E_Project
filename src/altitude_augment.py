@@ -14,10 +14,10 @@ compute_scale_bounds       utility exposed for testing / plotting
 Notes
 -----
 Altitude is injected into the labels dict by AltitudeAwareYOLODataset
-and read by AltitudeAwareRandomPerspective.  When mosaic=0 the labels dict 
-passes through Mosaic unchanged, so altitude_m is still present when the affine 
-transform fires. If mosaic > 0 the altitude is absent after tiling and the 
-transform falls back to symmetric scale (1±hyp.scale).
+and read by AltitudeAwareRandomPerspective.  When mosaic=0 the labels
+dict passes through Mosaic unchanged.  When mosaic>0, AltitudeAwareMosaic
+preserves altitude_m as the mean of the four component frame altitudes,
+so the affine transform still fires with a valid altitude.
 """
 
 import json
@@ -31,7 +31,7 @@ import numpy as np
 import torch.nn as nn
 from typing import cast
 
-from ultralytics.data.augment import Compose, RandomPerspective
+from ultralytics.data.augment import Compose, Mosaic, RandomPerspective
 from ultralytics.data.dataset import YOLODataset
 from ultralytics.models.yolo.obb.train import OBBTrainer
 from ultralytics.utils import DEFAULT_CFG, colorstr
@@ -177,6 +177,44 @@ def _swap_affine(
             )
 
 
+class AltitudeAwareMosaic(Mosaic):
+    """Mosaic that preserves altitude_m as the mean of the four frames.
+
+    Ultralytics' Mosaic._cat_labels builds a fresh labels dict that drops
+    all non-standard keys.  This override re-inserts altitude_m as the
+    mean of whichever component frames carry an altitude estimate, so that
+    AltitudeAwareRandomPerspective can still fire with a valid altitude
+    after mosaicing.
+    """
+
+    def _cat_labels(self, mosaic_labels: list) -> dict:
+        final_labels = super()._cat_labels(mosaic_labels)
+        alts = [
+            float(lbl["altitude_m"])
+            for lbl in mosaic_labels
+            if lbl.get("altitude_m") is not None
+        ]
+        if alts:
+            final_labels["altitude_m"] = sum(alts) / len(alts)
+        return final_labels
+
+
+def _swap_mosaic(transforms: Compose) -> None:
+    """In-place: replace Mosaic with AltitudeAwareMosaic in a Compose tree."""
+    for i, t in enumerate(transforms.transforms):
+        if isinstance(t, Compose):
+            _swap_mosaic(t)
+        elif type(t) is Mosaic:
+            new_mosaic = AltitudeAwareMosaic(
+                dataset=t.dataset,
+                imgsz=t.imgsz,
+                p=t.p,
+                n=t.n,
+            )
+            new_mosaic.pre_transform = t.pre_transform
+            transforms.transforms[i] = new_mosaic
+
+
 class AltitudeAwareYOLODataset(YOLODataset):
     """YOLODataset that injects per-frame altitude into labels and uses
     AltitudeAwareRandomPerspective for training augmentation."""
@@ -211,6 +249,7 @@ class AltitudeAwareYOLODataset(YOLODataset):
     def build_transforms(self, hyp=None):
         transforms = super().build_transforms(hyp)
         if self.augment:
+            _swap_mosaic(transforms)
             _swap_affine(transforms, self.alt_min, self.alt_max)
         return transforms
 
