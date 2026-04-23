@@ -235,3 +235,6 @@ CLAUDE.md
 
 # Local notes
 notes.txt
+
+# Output files
+*.out
