@@ -7,12 +7,18 @@ By default (scale=0, no mosaic) the raw estimated altitudes are shown.
     apparent_altitude = actual * mosaic_factor / U(1-scale, 1+scale)
 
 --altitude-aware: simulate altitude-aware augmentation where for each
-training frame at altitude h, a target altitude is sampled uniformly over
-[alt_min, alt_max] and the required scale factor s = h / h_target is applied:
+training frame at altitude h, a target altitude is sampled over
+[alt_min, alt_max] and the required scale factor s = h / h_target is
+applied:
     apparent_altitude = h_target  (exactly, when s is within clamp bounds)
 Scale factors are clamped to [0.1, 4.0] to stay within feasible image
 scaling limits; frames where clamping alters the target are still included
 but their apparent altitude will differ from h_target.
+
+--dist: target altitude distribution to use with --altitude-aware.
+    uniform    (default): h_target ~ U(alt_min, alt_max)
+    triangular:           h_target ~ Triangular(alt_min, alt_mode, alt_max)
+                          --alt-mode sets the peak (default: midpoint)
 
 Augmented altitudes are weighted by n_boxes / n_samples so total car count
 is preserved.
@@ -23,6 +29,8 @@ Usage
     python plot_altitude_dist.py --scale 0.7
     python plot_altitude_dist.py --altitude-aware
     python plot_altitude_dist.py --altitude-aware --alt-min 80 --alt-max 400
+    python plot_altitude_dist.py --altitude-aware --dist triangular \
+        --alt-mode 250
     python plot_altitude_dist.py --out results/altitude_dist.png
 """
 
@@ -90,7 +98,22 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--alt-max", type=float, default=300.0, dest="alt_max",
-        help="Upper bound of target altitude range in metres (default: 400)",
+        help="Upper bound of target altitude range in metres (default: 300)",
+    )
+    p.add_argument(
+        "--dist", choices=["uniform", "triangular"], default="uniform",
+        help=(
+            "Target altitude distribution for --altitude-aware: "
+            "'uniform' (default) or 'triangular' (see --alt-mode)"
+        ),
+    )
+    p.add_argument(
+        "--alt-mode", type=float, default=None, dest="alt_mode",
+        help=(
+            "Peak of the triangular target distribution in metres. "
+            "Only used with --dist triangular. "
+            "Defaults to midpoint of [alt_min, alt_max]."
+        ),
     )
     p.add_argument(
         "--seed", type=int, default=g.SEED,
@@ -153,17 +176,28 @@ def augment_train_altitude_aware(
     alt_max: float,
     n_samples: int,
     rng: np.random.Generator,
+    dist: str = "uniform",
+    alt_mode: float | None = None,
 ) -> tuple[List[float], List[float]]:
-    """Altitude-aware augmentation: sample h_target ~ U(alt_min, alt_max),
-    compute s = h / h_target, clamp to [SCALE_FLOOR, SCALE_CEILING], then
-    apparent_altitude = h / s.  When s is unclamped, apparent_altitude ==
-    h_target exactly, giving a flat distribution over [alt_min, alt_max].
+    """Altitude-aware augmentation: sample h_target from the chosen
+    distribution over [alt_min, alt_max], compute s = h / h_target,
+    clamp to [SCALE_FLOOR, SCALE_CEILING], then apparent_altitude = h / s.
+    When s is unclamped, apparent_altitude == h_target exactly.
+
+    dist='uniform'    -> h_target ~ U(alt_min, alt_max)
+    dist='triangular' -> h_target ~ Triangular(alt_min, alt_mode, alt_max)
+                         alt_mode defaults to midpoint when None
     """
     alts_arr = np.array(alts)
     w_arr = np.array(weights) / n_samples
 
-    # h_target shape: (n_frames, n_samples)
-    h_target = rng.uniform(alt_min, alt_max, size=(len(alts), n_samples))
+    size = (len(alts), n_samples)
+    if dist == "triangular":
+        mode = alt_mode if alt_mode is not None else (alt_min + alt_max) / 2
+        h_target = rng.triangular(alt_min, mode, alt_max, size=size)
+    else:
+        h_target = rng.uniform(alt_min, alt_max, size=size)
+
     s = alts_arr[:, None] / h_target
     s = np.clip(s, SCALE_FLOOR, SCALE_CEILING)
 
@@ -227,6 +261,9 @@ def main() -> None:
         raise ValueError("No training data found in metadata.json")
 
     if args.altitude_aware:
+        mode = args.alt_mode
+        if args.dist == "triangular" and mode is None:
+            mode = (args.alt_min + args.alt_max) / 2
         aug_alts, aug_weights = augment_train_altitude_aware(
             by_split["train"]["alts"],
             by_split["train"]["weights"],
@@ -234,12 +271,21 @@ def main() -> None:
             alt_max=args.alt_max,
             n_samples=args.n_samples,
             rng=rng,
+            dist=args.dist,
+            alt_mode=mode,
         )
         train_augmented = True
-        title = (
-            f"Altitude distribution — altitude-aware augmentation "
-            f"(target: {args.alt_min:.0f}–{args.alt_max:.0f} m)"
-        )
+        if args.dist == "triangular":
+            title = (
+                f"Altitude distribution — altitude-aware augmentation "
+                f"(target: triangular({args.alt_min:.0f}, "
+                f"{mode:.0f}, {args.alt_max:.0f}) m)"
+            )
+        else:
+            title = (
+                f"Altitude distribution — altitude-aware augmentation "
+                f"(target: {args.alt_min:.0f}–{args.alt_max:.0f} m)"
+            )
     else:
         aug_alts, aug_weights = augment_train(
             by_split["train"]["alts"],
