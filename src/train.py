@@ -139,6 +139,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--alt-mode", type=float, default=None, dest="alt_mode",
+        help=(
+            "peak of a triangular target altitude distribution in metres. "
+            "When omitted, uniform U(alt_min, alt_max) is used. "
+            "(altitude-aware scale only)"
+        ),
+    )
+    p.add_argument(
         "--resume", nargs="?", const=True, default=False,
         metavar="CHECKPOINT",
         help=(
@@ -205,7 +213,11 @@ def main() -> None:
         AltitudeAwareOBBTrainer if args.altitude_aware_scale else None
     )
     alt_kwargs = (
-        {"alt_min": args.alt_min, "alt_max": args.alt_max}
+        {
+            "alt_min": args.alt_min,
+            "alt_max": args.alt_max,
+            "alt_mode": args.alt_mode,
+        }
         if args.altitude_aware_scale else {}
     )
 
