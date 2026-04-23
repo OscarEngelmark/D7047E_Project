@@ -1,8 +1,8 @@
 """
 Baseline YOLOv9-OBB training script.
 
-Builds the model from src/configs and transfers backbone weights from the 
-pretrained COCO checkpoint (downloaded automatically by ultralytics on first 
+Builds the model from src/configs and transfers backbone weights from the
+pretrained COCO checkpoint (downloaded automatically by ultralytics on first
 use).
 
 Usage
@@ -10,6 +10,7 @@ Usage
 python src/train.py                         # all defaults
 python src/train.py --epochs 50 --batch 8
 python src/train.py --run-name exp-01 --no-wandb
+python src/train.py --altitude-aware-scale --alt-min 100 --alt-max 300
 """
 
 import os
@@ -21,8 +22,9 @@ import globals as g
 
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
+from altitude_augment import AltitudeAwareOBBTrainer
 from metadata_callback import register_metadata_callbacks
-from typing import Callable, Dict
+from typing import Callable
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -38,20 +40,6 @@ DEFAULT_RUN_NAME = "test-run"
 DEFAULT_MODEL    = "yolov9s"
 RUNS_DIR         = g.PROJECT_DIR / "runs"
 
-# Augmentation presets (from NVD paper hyp-aug.yaml / hyp-no-aug.yaml)
-AUG: Dict[str, float] = dict(
-    hsv_h=0.015,        # hue shift ±1.5%
-    hsv_s=0.7,          # saturation scale ±70%
-    hsv_v=0.4,          # brightness scale ±40%
-    degrees=45.0,       # random rotation ±45°
-    translate=0.1,      # random translation ±10% of image size
-    scale=0.7,          # random zoom ±80% (simulates altitude variation)
-    fliplr=0.5,         # horizontal flip
-    flipud=0.5,         # vertical flip
-    mosaic=0.0,         # tile 4 images; transforms apply to the composite
-    mixup=0.1,          # 10% chance of alpha-blending two mosaics
-    copy_paste=0.5,     # 10% chance of pasting object instances across images
-)
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -96,8 +84,11 @@ def parse_args() -> argparse.Namespace:
         help="early stopping patience in epochs (0 to disable)",
     )
     p.add_argument(
-        "--augment", action="store_true",
-        help="enable paper augmentations (degrees=45, flipud, mosaic, ...)",
+        "--augment", type=str, default=None, metavar="PRESET",
+        help=(
+            "augmentation preset filename stem from augmentations/ "
+            "(e.g. --augment paper loads augmentations/paper.yaml)"
+        ),
     )
     p.add_argument(
         "--freeze", type=int, default=0,
@@ -114,6 +105,28 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--model", type=str, default=DEFAULT_MODEL, 
         choices=["yolov9s", "yolov9c"], help="model variant to train",
+    )
+    p.add_argument(
+        "--altitude-aware-scale", action="store_true",
+        dest="altitude_aware_scale",
+        help=(
+            "use altitude-aware scale augmentation: sample "
+            "h_target ~ U(alt_min, alt_max), apply s = h / h_target"
+        ),
+    )
+    p.add_argument(
+        "--alt-min", type=float, default=100.0, dest="alt_min",
+        help=(
+            "lower bound of target altitude range in metres "
+            "(altitude-aware scale only, default: 100)"
+        ),
+    )
+    p.add_argument(
+        "--alt-max", type=float, default=300.0, dest="alt_max",
+        help=(
+            "upper bound of target altitude range in metres "
+            "(altitude-aware scale only, default: 300)"
+        ),
     )
     p.add_argument(
         "--no-wandb", action="store_true",
@@ -166,7 +179,11 @@ def main() -> None:
     dataset_yaml = write_dataset_yaml()
     print(f"Dataset: {dataset_yaml}")
 
-    wandb.init(
+    trainer_cls = (
+        AltitudeAwareOBBTrainer if args.altitude_aware_scale else None
+    )
+
+    with wandb.init(
         entity=g.WANDB_ENTITY,
         project=g.WANDB_PROJECT,
         name=args.run_name,
@@ -178,44 +195,64 @@ def main() -> None:
             "seed":   g.SEED,
         },
         mode="disabled" if args.no_wandb else "online",
-    )
+    ):
+        # Build model from custom OBB config
+        model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
+        weights   = g.MODELS_DIR / f"{args.model}.pt" # pretrained COCO weights
+        if not weights.exists():
+            attempt_download_asset(str(weights))
+        model = YOLO(str(model_cfg)).load(str(weights))
+        register_metadata_callbacks(model)
 
-    # Build model from custom OBB config, transfer pretrained backbone weights.
-    model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
-    weights   = g.MODELS_DIR / f"{args.model}.pt"
-    if not weights.exists():
-        attempt_download_asset(str(weights))
-    model = YOLO(str(model_cfg)).load(str(weights))
-    register_metadata_callbacks(model)
-    if args.freeze > 0 and args.unfreeze_epoch > 0:
-        model.add_callback("on_train_epoch_start", make_unfreeze_callback(
-            args.unfreeze_epoch, args.lr_unfreeze_factor,
-        ))
+        if args.freeze > 0 and args.unfreeze_epoch > 0:
+            model.add_callback(
+                "on_train_epoch_start",
+                make_unfreeze_callback(
+                    args.unfreeze_epoch, args.lr_unfreeze_factor,
+                ),
+            )
 
-    aug = AUG if args.augment else {}
-    model.train(
-        data=dataset_yaml,
-        task="obb",
-        epochs=args.epochs,
-        imgsz=args.imgsz,
-        batch=args.batch,
-        workers=args.workers,
-        cache=args.cache if args.cache != "off" else False,
-        optimizer=args.optimizer,
-        lr0=args.lr0,
-        patience=args.patience,
-        freeze=args.freeze if args.freeze > 0 else None,
-        close_mosaic=0,
-        save_period=10,
-        compile=torch.cuda.is_available(),
-        device=g.DEVICE,
-        seed=g.SEED,
-        project=str(RUNS_DIR),
-        name=args.run_name,
-        **aug,
-    )
+        if args.augment:
+            aug_path = g.AUGS_DIR / f"{args.augment}.yaml"
+            if not aug_path.exists():
+                raise FileNotFoundError(
+                    f"Augmentation preset not found: {aug_path}\n"
+                    f"Available: "
+                    f"{[p.stem for p in g.AUGS_DIR.glob('*.yaml')]}"
+                )
+            with open(aug_path) as f:
+                aug = yaml.safe_load(f)
+        else:
+            aug = {}
 
-    wandb.finish()
+        alt_kwargs = (
+            {"alt_min": args.alt_min, "alt_max": args.alt_max}
+            if args.altitude_aware_scale else {}
+        )
+
+        model.train(
+            trainer=trainer_cls,
+            data=dataset_yaml,
+            task="obb",
+            epochs=args.epochs,
+            imgsz=args.imgsz,
+            batch=args.batch,
+            workers=args.workers,
+            cache=args.cache if args.cache != "off" else False,
+            optimizer=args.optimizer,
+            lr0=args.lr0,
+            patience=args.patience,
+            freeze=args.freeze if args.freeze > 0 else None,
+            close_mosaic=0,
+            save_period=10,
+            compile=torch.cuda.is_available(),
+            device=g.DEVICE,
+            seed=g.SEED,
+            project=str(RUNS_DIR),
+            name=args.run_name,
+            **aug,
+            **alt_kwargs,
+        )
 
 
 if __name__ == "__main__":
