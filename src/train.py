@@ -9,12 +9,22 @@ Usage
 -----
 python src/train.py                         # all defaults
 python src/train.py --epochs 50 --batch 8
-python src/train.py --run-name exp-01 --no-wandb
 python src/train.py --altitude-aware-scale --alt-min 100 --alt-max 300
+
+# Resume from last checkpoint (W&B ID read from runs/<name>/wandb_run_id.txt)
+python src/train.py --resume --run-name exp-01
+
+# Resume from a specific checkpoint file
+python src/train.py --resume runs/exp-01/weights/epoch50.pt --run-name exp-01
+
+# Resume with a manually supplied W&B run ID (for runs started without
+# --resume support, e.g. the run currently in progress)
+python src/train.py --resume --run-name exp-01 --wandb-id abc12345
 """
 
 import os
 import argparse
+from pathlib import Path
 import torch
 import yaml
 import wandb
@@ -103,7 +113,7 @@ def parse_args() -> argparse.Namespace:
         help="multiply all LRs by this factor when backbone is unfrozen",
     )
     p.add_argument(
-        "--model", type=str, default=DEFAULT_MODEL, 
+        "--model", type=str, default=DEFAULT_MODEL,
         choices=["yolov9s", "yolov9c"], help="model variant to train",
     )
     p.add_argument(
@@ -129,8 +139,20 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
-        "--no-wandb", action="store_true",
-        help="disable wandb logging",
+        "--resume", nargs="?", const=True, default=False,
+        metavar="CHECKPOINT",
+        help=(
+            "resume interrupted training from a checkpoint. "
+            "Optionally provide a path; defaults to "
+            "runs/<run-name>/weights/last.pt"
+        ),
+    )
+    p.add_argument(
+        "--wandb-id", type=str, default=None, dest="wandb_id",
+        help=(
+            "W&B run ID to resume (overrides saved ID; useful for "
+            "runs started without --resume support)"
+        ),
     )
     return p.parse_args()
 
@@ -147,14 +169,14 @@ def make_unfreeze_callback(
                 for pg in trainer.optimizer.param_groups:
                     pg["lr"] *= lr_factor
                     # keeps the scheduler scaling correctly
-                    pg["initial_lr"] *= lr_factor  
+                    pg["initial_lr"] *= lr_factor
                 new_lr = trainer.optimizer.param_groups[0]["lr"]
                 print(f"[unfreeze] LR scaled by {lr_factor} → {new_lr:.6f}")
     return on_train_epoch_start
 
 
 def write_dataset_yaml() -> str:
-    """Regenerate dataset.yaml with the correct absolute path for this 
+    """Regenerate dataset.yaml with the correct absolute path for this
     machine."""
     cfg = {
         "path":  str(g.OUT_DIR.resolve()),
@@ -182,7 +204,64 @@ def main() -> None:
     trainer_cls = (
         AltitudeAwareOBBTrainer if args.altitude_aware_scale else None
     )
+    alt_kwargs = (
+        {"alt_min": args.alt_min, "alt_max": args.alt_max}
+        if args.altitude_aware_scale else {}
+    )
 
+    # ── resume branch ────────────────────────────────────────────────────────
+    if args.resume:
+        ckpt = (
+            Path(args.resume) if isinstance(args.resume, str)
+            else RUNS_DIR / args.run_name / "weights" / "last.pt"
+        )
+        if not ckpt.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
+        print(f"Resuming from: {ckpt}")
+
+        wandb_resume_kwargs: dict = {}
+        if args.wandb_id:
+            run_id = args.wandb_id
+        else:
+            id_file = RUNS_DIR / args.run_name / "wandb_run_id.txt"
+            run_id = (
+                id_file.read_text().strip()
+                if id_file.exists() else None
+            )
+        if run_id:
+            wandb_resume_kwargs = {"resume": "must", "id": run_id}
+            print(f"Resuming W&B run: {run_id}")
+        else:
+            print(
+                "No W&B run ID found; starting a new W&B run. "
+                "Pass --wandb-id to attach to the original run."
+            )
+
+        model = YOLO(str(ckpt))
+        register_metadata_callbacks(model)
+        if args.freeze > 0 and args.unfreeze_epoch > 0:
+            model.add_callback(
+                "on_train_epoch_start",
+                make_unfreeze_callback(
+                    args.unfreeze_epoch, args.lr_unfreeze_factor
+                ),
+            )
+
+        with wandb.init(
+            entity=g.WANDB_ENTITY,
+            project=g.WANDB_PROJECT,
+            name=args.run_name,
+            dir=str(g.PROJECT_DIR),
+            **wandb_resume_kwargs,
+        ):
+            model.train(
+                resume=True,
+                trainer=trainer_cls,
+                **alt_kwargs,
+            )
+        return
+
+    # ── fresh-run branch ─────────────────────────────────────────────────────
     with wandb.init(
         entity=g.WANDB_ENTITY,
         project=g.WANDB_PROJECT,
@@ -194,11 +273,14 @@ def main() -> None:
             "device": g.DEVICE,
             "seed":   g.SEED,
         },
-        mode="disabled" if args.no_wandb else "online",
-    ):
+    ) as run:
+        id_file = RUNS_DIR / args.run_name / "wandb_run_id.txt"
+        id_file.parent.mkdir(parents=True, exist_ok=True)
+        id_file.write_text(run.id)
+
         # Build model from custom OBB config
         model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
-        weights   = g.MODELS_DIR / f"{args.model}.pt" # pretrained COCO weights
+        weights   = g.MODELS_DIR / f"{args.model}.pt"
         if not weights.exists():
             attempt_download_asset(str(weights))
         model = YOLO(str(model_cfg)).load(str(weights))
@@ -224,11 +306,6 @@ def main() -> None:
                 aug = yaml.safe_load(f)
         else:
             aug = {}
-
-        alt_kwargs = (
-            {"alt_min": args.alt_min, "alt_max": args.alt_max}
-            if args.altitude_aware_scale else {}
-        )
 
         model.train(
             trainer=trainer_cls,
