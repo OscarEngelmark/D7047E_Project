@@ -238,3 +238,6 @@ notes.txt
 
 # Output files
 *.out
+
+# Report files
+report/
