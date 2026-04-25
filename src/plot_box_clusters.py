@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 from sklearn.cluster import KMeans
+from typing import List, Tuple
 
 # Allow running from repo root or src/
 SRC_DIR = Path(__file__).resolve().parent
@@ -57,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def obb_dims(pts: np.ndarray) -> tuple[float, float]:
+def obb_dims(pts: np.ndarray) -> Tuple[float, float]:
     """Return (short_side, long_side) in normalised units for one OBB."""
     p1, p2, p3 = pts[0], pts[1], pts[2]
     a = float(np.linalg.norm(p2 - p1))
@@ -65,13 +66,13 @@ def obb_dims(pts: np.ndarray) -> tuple[float, float]:
     return (min(a, b), max(a, b))
 
 
-def load_boxes(splits: list[str]) -> np.ndarray:
+def load_boxes(splits: List[str]) -> np.ndarray:
     """Return (N, 2) array of [w_px, h_px] using per-image actual size."""
     from PIL import Image
 
     img_size_cache: dict[Path, tuple[int, int]] = {}
 
-    def img_size(lbl_path: Path, split: str) -> tuple[int, int]:
+    def img_size(lbl_path: Path, split: str) -> Tuple[int, int]:
         img_path = g.IMG_DIR / split / (lbl_path.stem + ".jpg")
         if img_path not in img_size_cache:
             try:

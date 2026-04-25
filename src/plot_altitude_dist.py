@@ -37,7 +37,7 @@ Usage
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.axes
 import matplotlib.pyplot as plt
@@ -146,7 +146,7 @@ def augment_train(
     n_samples: int,
     rng: np.random.Generator,
     mosaic: bool,
-) -> tuple[List[float], List[float]]:
+) -> Tuple[List[float], List[float]]:
     """Return (augmented_alts, augmented_weights) for the training split.
 
     apparent_altitude = actual * mosaic_factor / U(1-scale, 1+scale)
@@ -177,8 +177,8 @@ def augment_train_altitude_aware(
     n_samples: int,
     rng: np.random.Generator,
     dist: str = "uniform",
-    alt_mode: float | None = None,
-) -> tuple[List[float], List[float]]:
+    alt_mode: Optional[float] = None,
+) -> Tuple[List[float], List[float]]:
     """Altitude-aware augmentation: sample h_target from the chosen
     distribution over [alt_min, alt_max], compute s = h / h_target,
     clamp to [SCALE_FLOOR, SCALE_CEILING], then apparent_altitude = h / s.

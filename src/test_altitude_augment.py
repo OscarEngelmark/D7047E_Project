@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 from scipy.stats import kstest
+from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from altitude_augment import (
@@ -53,10 +54,10 @@ def _make_transform(scale: float = 0.5) -> AltitudeAwareRandomPerspective:
 
 def _sample_scales(
     transform: AltitudeAwareRandomPerspective,
-    altitude_m: float | None,
+    altitude_m: Optional[float],
     n: int,
     seed: int = 0,
-) -> list[float]:
+) -> List[float]:
     """Sample n scale factors from affine_transform with _altitude_m preset.
 
     RandomPerspective.__call__ normally sets self.size before calling
@@ -252,7 +253,7 @@ class TestMosaicPipelineDistribution:
 
 # ── AltitudeAwareMosaic ──────────────────────────────────────────────────────
 
-def _make_mosaic_labels(altitudes: list[float | None]) -> list[dict]:
+def _make_mosaic_labels(altitudes: List[Optional[float]]) -> List[Dict]:
     """Build minimal label dicts as _cat_labels receives them."""
     from ultralytics.utils.instance import Instances
     labels = []
