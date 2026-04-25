@@ -34,12 +34,12 @@ from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
 from altitude_augment import AltitudeAwareOBBTrainer
 from metadata_callback import register_metadata_callbacks
-from typing import Callable
+from typing import Any, Callable, Dict, Optional
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-# ── defaults ────────────────────────────────────────────────────────────────
+# ── defaults ─────────────────────────────────────────────────────────────────
 
 DEFAULT_EPOCHS   = 100
 DEFAULT_PATIENCE = 20
@@ -51,7 +51,7 @@ DEFAULT_MODEL    = "yolov9s"
 RUNS_DIR         = g.PROJECT_DIR / "runs"
 
 
-# ── helpers ─────────────────────────────────────────────────────────────────
+# ── helpers ──────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -79,7 +79,10 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--cache", type=str, default="disk", choices=["ram", "disk", "off"],
-        help="cache images in ram/disk for faster training, or off to disable",
+        help=(
+            "cache images in ram/disk for faster training, "
+            "or off to disable"
+        ),
     )
     p.add_argument(
         "--optimizer", type=str, default="AdamW",
@@ -106,7 +109,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--unfreeze-epoch", type=int, default=0,
-        help="epoch at which to unfreeze frozen layers (0=never unfreeze)",
+        help=(
+            "epoch at which to unfreeze frozen layers (0=never unfreeze)"
+        ),
     )
     p.add_argument(
         "--lr-unfreeze-factor", type=float, default=1.0,
@@ -172,14 +177,18 @@ def make_unfreeze_callback(
         if trainer.epoch == unfreeze_epoch:
             for _, param in trainer.model.named_parameters():
                 param.requires_grad = True
-            print(f"[unfreeze] All layers unfrozen at epoch {unfreeze_epoch}")
+            print(
+                f"[unfreeze] All layers unfrozen at epoch {unfreeze_epoch}"
+            )
             if lr_factor != 1.0:
                 for pg in trainer.optimizer.param_groups:
                     pg["lr"] *= lr_factor
                     # keeps the scheduler scaling correctly
                     pg["initial_lr"] *= lr_factor
                 new_lr = trainer.optimizer.param_groups[0]["lr"]
-                print(f"[unfreeze] LR scaled by {lr_factor} → {new_lr:.6f}")
+                print(
+                    f"[unfreeze] LR scaled by {lr_factor} → {new_lr:.6f}"
+                )
     return on_train_epoch_start
 
 
@@ -211,28 +220,14 @@ def write_dataset_yaml() -> str:
     return str(path)
 
 
-# ── main ────────────────────────────────────────────────────────────────────
+def _read_saved_run_id(run_name: str) -> Optional[str]:
+    """Return the saved W&B run ID for run_name, or None if absent."""
+    id_file = RUNS_DIR / run_name / "wandb_run_id.txt"
+    return id_file.read_text().strip() if id_file.exists() else None
 
-def main() -> None:
-    args = parse_args()
-    print(f"Device: {g.DEVICE}")
 
-    dataset_yaml = write_dataset_yaml()
-    print(f"Dataset: {dataset_yaml}")
-
-    trainer_cls = (
-        AltitudeAwareOBBTrainer if args.altitude_aware_scale else None
-    )
-    alt_kwargs = (
-        {
-            "alt_min": args.alt_min,
-            "alt_max": args.alt_max,
-            "alt_mode": args.alt_mode,
-        }
-        if args.altitude_aware_scale else {}
-    )
-
-    # ── resume branch ────────────────────────────────────────────────────────
+def resolve_model(args: argparse.Namespace) -> YOLO:
+    """Load model from checkpoint (resume) or build fresh from config."""
     if args.resume:
         ckpt = (
             Path(args.resume) if isinstance(args.resume, str)
@@ -241,117 +236,128 @@ def main() -> None:
         if not ckpt.exists():
             raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
         print(f"Resuming from: {ckpt}")
+        return YOLO(str(ckpt))
+    model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
+    weights   = g.MODELS_DIR / f"{args.model}.pt"
+    if not weights.exists():
+        attempt_download_asset(str(weights))
+    model = YOLO(str(model_cfg))
+    model.load(str(weights))
+    return model
 
-        wandb_resume_kwargs: dict = {}
-        if args.wandb_id:
-            run_id = args.wandb_id
-        else:
-            id_file = RUNS_DIR / args.run_name / "wandb_run_id.txt"
-            run_id = (
-                id_file.read_text().strip()
-                if id_file.exists() else None
-            )
+
+def resolve_wandb_kwargs(args: argparse.Namespace) -> Dict[str, Any]:
+    """Return wandb.init kwargs for a resume or a fresh run."""
+    if args.resume:
+        run_id = args.wandb_id or _read_saved_run_id(args.run_name)
         if run_id:
-            wandb_resume_kwargs = {"resume": "must", "id": run_id}
             print(f"Resuming W&B run: {run_id}")
-        else:
-            print(
-                "No W&B run ID found; starting a new W&B run. "
-                "Pass --wandb-id to attach to the original run."
-            )
+            return {"resume": "must", "id": run_id}
+        print(
+            "No W&B run ID found; starting a new W&B run. "
+            "Pass --wandb-id to attach to the original run."
+        )
+        return {}
+    return {
+        "config": {
+            **vars(args),
+            "model":  f"{args.model}-obb",
+            "device": g.DEVICE,
+            "seed":   g.SEED,
+        }
+    }
 
-        model = YOLO(str(ckpt))
-        register_metadata_callbacks(model)
-        model.add_callback("on_train_start", make_save_wandb_id_callback())
-        if args.freeze > 0 and args.unfreeze_epoch > 0:
-            model.add_callback(
-                "on_train_epoch_start",
-                make_unfreeze_callback(
-                    args.unfreeze_epoch, args.lr_unfreeze_factor
-                ),
-            )
 
-        with wandb.init(
-            entity=g.WANDB_ENTITY,
-            project=g.WANDB_PROJECT,
-            name=args.run_name,
-            dir=str(g.PROJECT_DIR),
-            **wandb_resume_kwargs,
-        ):
-            model.train(
-                resume=True,
-                trainer=trainer_cls,
-                **alt_kwargs,
-            )
-        return
+def resolve_train_kwargs(
+        args: argparse.Namespace, dataset_yaml: str
+) -> Dict[str, Any]:
+    """Return model.train kwargs for a resume or a fresh run."""
+    trainer_cls = (
+        AltitudeAwareOBBTrainer if args.altitude_aware_scale else None
+    )
+    alt_kwargs = (
+        {
+            "alt_min":  args.alt_min,
+            "alt_max":  args.alt_max,
+            "alt_mode": args.alt_mode,
+        }
+        if args.altitude_aware_scale else {}
+    )
 
-    # ── fresh-run branch ─────────────────────────────────────────────────────
+    if args.resume:
+        return {"resume": True, "trainer": trainer_cls, **alt_kwargs}
+
+    if args.augment:
+        aug_path = g.AUGS_DIR / f"{args.augment}.yaml"
+        if not aug_path.exists():
+            raise FileNotFoundError(
+                f"Augmentation preset not found: {aug_path}\n"
+                f"Available: "
+                f"{[p.stem for p in g.AUGS_DIR.glob('*.yaml')]}"
+            )
+        with open(aug_path) as f:
+            aug = yaml.safe_load(f)
+    else:
+        aug = {}
+
+    return {
+        "trainer":      trainer_cls,
+        "data":         dataset_yaml,
+        "task":         "obb",
+        "epochs":       args.epochs,
+        "imgsz":        args.imgsz,
+        "batch":        args.batch,
+        "workers":      args.workers,
+        "cache":        args.cache if args.cache != "off" else False,
+        "optimizer":    args.optimizer,
+        "lr0":          args.lr0,
+        "patience":     args.patience,
+        "freeze":       args.freeze if args.freeze > 0 else None,
+        "close_mosaic": 0,
+        "save_period":  10,
+        "compile":      torch.cuda.is_available(),
+        "device":       g.DEVICE,
+        "seed":         g.SEED,
+        "project":      str(RUNS_DIR),
+        "name":         args.run_name,
+        **aug,
+        **alt_kwargs,
+    }
+
+
+def attach_callbacks(model: YOLO, args: argparse.Namespace) -> None:
+    """Register all ultralytics training callbacks on model."""
+    register_metadata_callbacks(model)
+    model.add_callback("on_train_start", make_save_wandb_id_callback())
+    if args.freeze > 0 and args.unfreeze_epoch > 0:
+        model.add_callback(
+            "on_train_epoch_start",
+            make_unfreeze_callback(
+                args.unfreeze_epoch, args.lr_unfreeze_factor
+            ),
+        )
+
+
+# ── main ─────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    args = parse_args()
+    print(f"Device: {g.DEVICE}")
+    
+    dataset_yaml = write_dataset_yaml()
+    print(f"Dataset: {dataset_yaml}")
+
+    model = resolve_model(args)
+    attach_callbacks(model, args)
+
     with wandb.init(
         entity=g.WANDB_ENTITY,
         project=g.WANDB_PROJECT,
         name=args.run_name,
         dir=str(g.PROJECT_DIR),
-        config={
-            **vars(args),
-            "model":  f"{args.model}-obb",
-            "device": g.DEVICE,
-            "seed":   g.SEED,
-        },
+        **resolve_wandb_kwargs(args),
     ):
-        # Build model from custom OBB config
-        model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
-        weights   = g.MODELS_DIR / f"{args.model}.pt"
-        if not weights.exists():
-            attempt_download_asset(str(weights))
-        model = YOLO(str(model_cfg)).load(str(weights))
-        register_metadata_callbacks(model)
-        # Save ID to the actual run dir (resolved by ultralytics at train start)
-        model.add_callback("on_train_start", make_save_wandb_id_callback())
-
-        if args.freeze > 0 and args.unfreeze_epoch > 0:
-            model.add_callback(
-                "on_train_epoch_start",
-                make_unfreeze_callback(
-                    args.unfreeze_epoch, args.lr_unfreeze_factor,
-                ),
-            )
-
-        if args.augment:
-            aug_path = g.AUGS_DIR / f"{args.augment}.yaml"
-            if not aug_path.exists():
-                raise FileNotFoundError(
-                    f"Augmentation preset not found: {aug_path}\n"
-                    f"Available: "
-                    f"{[p.stem for p in g.AUGS_DIR.glob('*.yaml')]}"
-                )
-            with open(aug_path) as f:
-                aug = yaml.safe_load(f)
-        else:
-            aug = {}
-
-        model.train(
-            trainer=trainer_cls,
-            data=dataset_yaml,
-            task="obb",
-            epochs=args.epochs,
-            imgsz=args.imgsz,
-            batch=args.batch,
-            workers=args.workers,
-            cache=args.cache if args.cache != "off" else False,
-            optimizer=args.optimizer,
-            lr0=args.lr0,
-            patience=args.patience,
-            freeze=args.freeze if args.freeze > 0 else None,
-            close_mosaic=0,
-            save_period=10,
-            compile=torch.cuda.is_available(),
-            device=g.DEVICE,
-            seed=g.SEED,
-            project=str(RUNS_DIR),
-            name=args.run_name,
-            **aug,
-            **alt_kwargs,
-        )
+        model.train(**resolve_train_kwargs(args, dataset_yaml))
 
 
 if __name__ == "__main__":
