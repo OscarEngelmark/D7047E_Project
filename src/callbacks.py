@@ -3,7 +3,7 @@ Ultralytics training and validation callbacks for the YOLOv9-OBB project.
 
 Three groups:
 
-Training callbacks (registered via attach_training_callbacks in train.py):
+Training callbacks (registered via attach_callbacks in train.py):
   on_train_start       — saves the W&B run ID to disk for --resume support
   on_train_epoch_start — optionally unfreezes backbone layers at a given epoch
 
@@ -11,7 +11,8 @@ Metadata / validation callbacks (registered via register_metadata_callbacks):
   on_val_start — wraps validator.update_metrics to pair per-image stats with
                  filenames before ultralytics discards the mapping
   on_val_end   — groups stats by altitude bucket, snow cover, and cloud cover
-                 and logs all metrics to W&B
+                 and stores them in _last_bucket_metrics
+  on_fit_epoch_end — single W&B log per epoch (training mode only)
 
 Design note
 -----------
@@ -20,8 +21,9 @@ the on_val_end callback fires, and never stores the image-file <-> stats
 mapping anywhere reachable. To work around this, on_val_start wraps
 validator.update_metrics so each batch's im_file list is paired with the
 fresh entries appended to validator.metrics.stats and stashed on the
-validator. on_val_end then groups, computes per-bucket metrics with
-ultralytics' own ap_per_class, and logs them to W&B.
+validator. on_val_end then groups and computes per-bucket metrics with
+ultralytics' own ap_per_class; on_fit_epoch_end picks them up and logs
+everything to W&B in a single call.
 """
 
 from __future__ import annotations
@@ -38,7 +40,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 # ── module state (metadata callbacks) ────────────────────────────────────────
 
 _metadata_cache: Optional[Dict[str, Dict[str, Any]]] = None
-_val_count: int = 0  # incremented per val pass so W&B steps map to epochs
 _last_bucket_metrics: Dict[str, float] = {}
 
 
@@ -98,25 +99,22 @@ def _bucket_for(altitude: Optional[float]) -> Optional[str]:
     return None
 
 
-def _make_val_start_callback(test_mode: bool = False) -> Callable:
-    def on_val_start(validator) -> None:
-        validator._per_image_stats = []
-        validator._test_mode = test_mode
-        original_update = validator.update_metrics
-        stats_dict = validator.metrics.stats
+def _on_val_start(validator) -> None:
+    validator._per_image_stats = []
+    original_update = validator.update_metrics
+    stats_dict = validator.metrics.stats
 
-        def wrapped_update_metrics(preds, batch):
-            before = {k: len(v) for k, v in stats_dict.items()}
-            original_update(preds, batch)
-            n_new = len(stats_dict["tp"]) - before["tp"]
-            for i in range(n_new):
-                entry = {k: stats_dict[k][before[k] + i] for k in stats_dict}
-                validator._per_image_stats.append(
-                    (batch["im_file"][i], entry)
-                )
+    def wrapped_update_metrics(preds: Any, batch: Any) -> None:
+        before = {k: len(v) for k, v in stats_dict.items()}
+        original_update(preds, batch)
+        n_new = len(stats_dict["tp"]) - before["tp"]
+        for i in range(n_new):
+            entry = {k: stats_dict[k][before[k] + i] for k in stats_dict}
+            validator._per_image_stats.append(
+                (batch["im_file"][i], entry)
+            )
 
-        validator.update_metrics = wrapped_update_metrics
-    return on_val_start
+    validator.update_metrics = wrapped_update_metrics
 
 
 def _to_key(s: str) -> str:
@@ -188,18 +186,8 @@ def _log_categorical_buckets(
 
 
 def _on_val_end(validator) -> None:
-    global _val_count
-    _val_count += 1
-
     if not getattr(validator, "_per_image_stats", None):
         return
-    if wandb.run is None:
-        return
-
-    test_mode    = getattr(validator, "_test_mode", False)
-    prefix_alt   = "test_alt"   if test_mode else "val_alt"
-    prefix_snow  = "test_snow"  if test_mode else "val_snow"
-    prefix_cloud = "test_cloud" if test_mode else "val_cloud"
 
     metadata        = _load_metadata()
     per_image_stats = validator._per_image_stats
@@ -219,34 +207,50 @@ def _on_val_end(validator) -> None:
             continue
         n_imgs    = len(entries)
         n_targets = sum(int(e["target_cls"].size) for e in entries)
-        log[f"{prefix_alt}/{bucket}/n_images"]  = n_imgs
-        log[f"{prefix_alt}/{bucket}/n_targets"] = n_targets
+        log[f"val_alt/{bucket}/n_images"]  = n_imgs
+        log[f"val_alt/{bucket}/n_targets"] = n_targets
         if n_targets == 0:
             continue
         m = _per_bucket_metrics(entries)
         if m is None:
             continue
         precision, recall, map50, map5095 = m
-        log[f"{prefix_alt}/{bucket}/precision"] = precision
-        log[f"{prefix_alt}/{bucket}/recall"]    = recall
-        log[f"{prefix_alt}/{bucket}/mAP50"]     = map50
-        log[f"{prefix_alt}/{bucket}/mAP50-95"]  = map5095
+        log[f"val_alt/{bucket}/precision"] = precision
+        log[f"val_alt/{bucket}/recall"]    = recall
+        log[f"val_alt/{bucket}/mAP50"]     = map50
+        log[f"val_alt/{bucket}/mAP50-95"]  = map5095
 
     # ── snow cover & cloud cover buckets ─────────────────────────────────────
     log.update(_log_categorical_buckets(
-        per_image_stats, metadata, "snow_cover", prefix_snow,
+        per_image_stats, metadata, "snow_cover", "val_snow",
     ))
     log.update(_log_categorical_buckets(
-        per_image_stats, metadata, "cloud_cover", prefix_cloud,
+        per_image_stats, metadata, "cloud_cover", "val_cloud",
     ))
 
     _last_bucket_metrics.clear()
     _last_bucket_metrics.update(log)
 
-    if test_mode:
-        wandb.run.summary.update(log)
-    else:
-        wandb.log(log, step=_val_count)
+
+def _on_fit_epoch_end(trainer) -> None:
+    """Single source of truth for per-epoch W&B logging.
+
+    Replaces ultralytics' built-in W&B integration (disabled in train.py) so
+    every metric goes through one wandb.log call with no explicit step. The
+    `epoch` field drives the chart x-axis via define_metric in train.py, so
+    resumed runs can never trigger step-monotonicity warnings.
+    """
+    if wandb.run is None:
+        return
+
+    log: Dict[str, Any] = {"epoch": trainer.epoch}
+    if getattr(trainer, "tloss", None) is not None:
+        log.update(trainer.label_loss_items(trainer.tloss, prefix="train"))
+    log.update(trainer.metrics)
+    log.update(trainer.lr)
+    log.update(_last_bucket_metrics)
+
+    wandb.log(log)
 
 
 # ── public API ───────────────────────────────────────────────────────────────
@@ -256,11 +260,13 @@ def get_last_bucket_metrics() -> Dict[str, float]:
     return dict(_last_bucket_metrics)
 
 
-def register_metadata_callbacks(model, test_mode: bool = False) -> None:
-    """Register on_val_start / on_val_end on a YOLO model.
+def register_metadata_callbacks(model: Any, training: bool = True) -> None:
+    """Register validation and per-epoch W&B logging callbacks on a YOLO model.
 
-    test_mode: log to wandb.summary (one-shot) instead of wandb.log
-    (per-epoch).
+    training: also register on_fit_epoch_end for W&B logging (set False
+    when running model.val() one-shot, e.g. in evaluate.py).
     """
-    model.add_callback("on_val_start", _make_val_start_callback(test_mode))
+    model.add_callback("on_val_start", _on_val_start)
     model.add_callback("on_val_end",   _on_val_end)
+    if training:
+        model.add_callback("on_fit_epoch_end", _on_fit_epoch_end)

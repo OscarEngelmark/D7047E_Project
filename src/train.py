@@ -30,7 +30,7 @@ import yaml
 import wandb
 import globals as g
 
-from ultralytics import YOLO
+from ultralytics import YOLO, settings as ultralytics_settings
 from ultralytics.utils.downloads import attempt_download_asset
 from altitude_augment import AltitudeAwareOBBTrainer
 from callbacks import (
@@ -42,6 +42,10 @@ from typing import Any, Dict, Optional
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+# Disable ultralytics' built-in W&B integration. We log metrics ourselves from
+# callbacks.py so that explicit-step conflicts on resume cannot occur.
+ultralytics_settings.update({"wandb": False})
 
 # ── defaults ─────────────────────────────────────────────────────────────────
 
@@ -356,6 +360,11 @@ def main() -> None:
         dir=str(g.PROJECT_DIR),
         **resolve_wandb_kwargs(args),
     ):
+        # Plot every metric against epoch instead of W&B's auto-incrementing
+        # internal step. Decouples our logging from the global step counter so
+        # resumed runs cannot trigger step-monotonicity warnings.
+        wandb.define_metric("epoch")
+        wandb.define_metric("*", step_metric="epoch")
         model.train(**resolve_train_kwargs(args, dataset_yaml))
 
 

@@ -1,28 +1,23 @@
 """
 Evaluate a trained YOLOv9-OBB checkpoint on the test split.
 
-Per-altitude, snow-cover, and cloud-cover metrics are logged to W&B as
-summary values (not time-series) so they appear alongside — but separate
-from — the training run that produced the checkpoint.
+Prints overall and per-bucket metrics, then saves a 2×2 bar-chart PNG to
+results/<run-name>.png.
 
 Usage
 -----
 python src/evaluate.py --weights runs/<run>/weights/best.pt
-python src/evaluate.py --weights runs/<run>/weights/best.pt --no-wandb
 python src/evaluate.py --weights runs/<run>/weights/best.pt --run-name my-eval
 """
 
 import os
 import argparse
-import wandb
 import matplotlib.pyplot as plt
 import globals as g
 
 from pathlib import Path
 from ultralytics import YOLO
-from callbacks import (
-    get_last_bucket_metrics, register_metadata_callbacks
-)
+from callbacks import get_last_bucket_metrics, register_metadata_callbacks
 from train import write_dataset_yaml
 from typing import Dict
 
@@ -44,7 +39,7 @@ def plot_metrics(
 ) -> Path:
     """Save a 2x2 grid of bar charts — one per metric — to RESULTS_DIR."""
     bucket_labels = [label for label, *_ in g.ALTITUDE_BUCKETS]
-    prefix = "test_alt"
+    prefix = "val_alt"
 
     n_cars_overall = sum(
         int(bucket_metrics.get(f"{prefix}/{b}/n_targets", 0))
@@ -98,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--run-name", type=str, default=None,
-        help="W&B run name (defaults to 'eval-<weights stem>')",
+        help="name used for the output plot (defaults to 'eval-<weights stem>')",
     )
     p.add_argument(
         "--imgsz", type=int, default=1920,
@@ -109,10 +104,6 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--workers", type=int, default=16,
-    )
-    p.add_argument(
-        "--no-wandb", action="store_true",
-        help="disable W&B logging",
     )
     return p.parse_args()
 
@@ -132,23 +123,8 @@ def main() -> None:
     print(f"Dataset:  {dataset_yaml}")
     print(f"Device:   {g.DEVICE}")
 
-    wandb.init(
-        entity=g.WANDB_ENTITY,
-        project=g.WANDB_PROJECT,
-        name=run_name,
-        dir=str(g.PROJECT_DIR),
-        config={
-            "weights": str(weights_path),
-            "imgsz":   args.imgsz,
-            "batch":   args.batch,
-            "split":   "test",
-            "device":  g.DEVICE,
-        },
-        mode="disabled" if args.no_wandb else "online",
-    )
-
     model = YOLO(str(weights_path))
-    register_metadata_callbacks(model, test_mode=True)
+    register_metadata_callbacks(model, training=False)
 
     results = model.val(
         data=dataset_yaml,
@@ -169,19 +145,12 @@ def main() -> None:
         "mAP50-95":  float(box.map),
     }
 
-    if wandb.run is not None:
-        wandb.run.summary.update({
-            f"test/{k}": v for k, v in overall.items()
-        })
-
     print(f"\nTest mAP50:   {overall['mAP50']:.4f}")
     print(f"Test mAP50-95:  {overall['mAP50-95']:.4f}")
     print(f"Test precision: {overall['precision']:.4f}")
     print(f"Test recall:    {overall['recall']:.4f}")
     out = plot_metrics(overall, get_last_bucket_metrics(), run_name)
     print(f"Plot saved to:  {out}")
-
-    wandb.finish()
 
 
 if __name__ == "__main__":
