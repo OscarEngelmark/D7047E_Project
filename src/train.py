@@ -18,7 +18,7 @@ python src/train.py --resume --run-name exp-01
 python src/train.py --resume runs/exp-01/weights/epoch50.pt --run-name exp-01
 
 # Resume with a manually supplied W&B run ID (for runs started without
-# --resume support, e.g. the run currently in progress)
+# --resume support)
 python src/train.py --resume --run-name exp-01 --wandb-id abc12345
 """
 
@@ -183,6 +183,17 @@ def make_unfreeze_callback(
     return on_train_epoch_start
 
 
+def make_save_wandb_id_callback() -> Callable:
+    def on_train_start(trainer) -> None:
+        if wandb.run is None:
+            return
+        id_file = Path(trainer.save_dir) / "wandb_run_id.txt"
+        id_file.parent.mkdir(parents=True, exist_ok=True)
+        id_file.write_text(wandb.run.id)
+        print(f"[wandb] Run ID saved to {id_file}")
+    return on_train_start
+
+
 def write_dataset_yaml() -> str:
     """Regenerate dataset.yaml with the correct absolute path for this
     machine."""
@@ -251,6 +262,7 @@ def main() -> None:
 
         model = YOLO(str(ckpt))
         register_metadata_callbacks(model)
+        model.add_callback("on_train_start", make_save_wandb_id_callback())
         if args.freeze > 0 and args.unfreeze_epoch > 0:
             model.add_callback(
                 "on_train_epoch_start",
@@ -266,10 +278,6 @@ def main() -> None:
             dir=str(g.PROJECT_DIR),
             **wandb_resume_kwargs,
         ):
-            if wandb.run is not None:
-                id_file = RUNS_DIR / args.run_name / "wandb_run_id.txt"
-                id_file.parent.mkdir(parents=True, exist_ok=True)
-                id_file.write_text(wandb.run.id)
             model.train(
                 resume=True,
                 trainer=trainer_cls,
@@ -290,11 +298,6 @@ def main() -> None:
             "seed":   g.SEED,
         },
     ):
-        if wandb.run is not None:
-            id_file = RUNS_DIR / args.run_name / "wandb_run_id.txt"
-            id_file.parent.mkdir(parents=True, exist_ok=True)
-            id_file.write_text(wandb.run.id)
-
         # Build model from custom OBB config
         model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
         weights   = g.MODELS_DIR / f"{args.model}.pt"
@@ -302,6 +305,8 @@ def main() -> None:
             attempt_download_asset(str(weights))
         model = YOLO(str(model_cfg)).load(str(weights))
         register_metadata_callbacks(model)
+        # Save ID to the actual run dir (resolved by ultralytics at train start)
+        model.add_callback("on_train_start", make_save_wandb_id_callback())
 
         if args.freeze > 0 and args.unfreeze_epoch > 0:
             model.add_callback(
