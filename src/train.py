@@ -48,7 +48,6 @@ DEFAULT_BATCH    = 8
 DEFAULT_WORKERS  = 16
 DEFAULT_RUN_NAME = "test-run"
 DEFAULT_MODEL    = "yolov9s"
-RUNS_DIR         = g.PROJECT_DIR / "runs"
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -222,7 +221,7 @@ def write_dataset_yaml() -> str:
 
 def _read_saved_run_id(run_name: str) -> Optional[str]:
     """Return the saved W&B run ID for run_name, or None if absent."""
-    id_file = RUNS_DIR / run_name / "wandb_run_id.txt"
+    id_file = g.RUNS_DIR / run_name / "wandb_run_id.txt"
     return id_file.read_text().strip() if id_file.exists() else None
 
 
@@ -231,7 +230,7 @@ def resolve_model(args: argparse.Namespace) -> YOLO:
     if args.resume:
         ckpt = (
             Path(args.resume) if isinstance(args.resume, str)
-            else RUNS_DIR / args.run_name / "weights" / "last.pt"
+            else g.RUNS_DIR / args.run_name / "weights" / "last.pt"
         )
         if not ckpt.exists():
             raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
@@ -318,7 +317,7 @@ def resolve_train_kwargs(
         "compile":      torch.cuda.is_available(),
         "device":       g.DEVICE,
         "seed":         g.SEED,
-        "project":      str(RUNS_DIR),
+        "project":      str(g.RUNS_DIR),
         "name":         args.run_name,
         **aug,
         **alt_kwargs,

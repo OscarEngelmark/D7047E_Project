@@ -42,6 +42,7 @@ LBL_DIR     = OUT_DIR / "labels"
 MODELS_DIR  = PROJECT_DIR / "models"
 RESULTS_DIR = PROJECT_DIR / "results"
 AUGS_DIR    = PROJECT_DIR / "augmentations"
+RUNS_DIR    = PROJECT_DIR / "runs"
 
 for p in [DATA_DIR, OUT_DIR, IMG_DIR, LBL_DIR, MODELS_DIR, RESULTS_DIR,
           AUGS_DIR]:
