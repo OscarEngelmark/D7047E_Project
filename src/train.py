@@ -266,6 +266,10 @@ def main() -> None:
             dir=str(g.PROJECT_DIR),
             **wandb_resume_kwargs,
         ):
+            if wandb.run is not None:
+                id_file = RUNS_DIR / args.run_name / "wandb_run_id.txt"
+                id_file.parent.mkdir(parents=True, exist_ok=True)
+                id_file.write_text(wandb.run.id)
             model.train(
                 resume=True,
                 trainer=trainer_cls,
@@ -285,10 +289,11 @@ def main() -> None:
             "device": g.DEVICE,
             "seed":   g.SEED,
         },
-    ) as run:
-        id_file = RUNS_DIR / args.run_name / "wandb_run_id.txt"
-        id_file.parent.mkdir(parents=True, exist_ok=True)
-        id_file.write_text(run.id)
+    ):
+        if wandb.run is not None:
+            id_file = RUNS_DIR / args.run_name / "wandb_run_id.txt"
+            id_file.parent.mkdir(parents=True, exist_ok=True)
+            id_file.write_text(wandb.run.id)
 
         # Build model from custom OBB config
         model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
