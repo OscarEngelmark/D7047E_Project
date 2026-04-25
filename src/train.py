@@ -56,101 +56,13 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Train a YOLOv9-OBB model for car detection"
     )
-    p.add_argument(
-        "--epochs", type=int, default=DEFAULT_EPOCHS,
-        help="number of training epochs",
-    )
-    p.add_argument(
-        "--imgsz", type=int, default=DEFAULT_IMGSZ,
-        help="input image size",
-    )
-    p.add_argument(
-        "--batch", type=int, default=DEFAULT_BATCH,
-        help="batch size",
-    )
-    p.add_argument(
+
+    g_run = p.add_argument_group("run identity")
+    g_run.add_argument(
         "--run-name", type=str, default=DEFAULT_RUN_NAME,
         help="name for this run (wandb + runs/ folder)",
     )
-    p.add_argument(
-        "--workers", type=int, default=DEFAULT_WORKERS,
-        help="number of dataloader workers",
-    )
-    p.add_argument(
-        "--cache", type=str, default="disk", choices=["ram", "disk", "off"],
-        help=(
-            "cache images in ram/disk for faster training, "
-            "or off to disable"
-        ),
-    )
-    p.add_argument(
-        "--optimizer", type=str, default="AdamW",
-        help="optimizer (AdamW, SGD, MuSGD, ...)",
-    )
-    p.add_argument(
-        "--lr0", type=float, default=0.002,
-        help="initial learning rate (AdamW default: 0.002, SGD: 0.01)",
-    )
-    p.add_argument(
-        "--patience", type=int, default=DEFAULT_PATIENCE,
-        help="early stopping patience in epochs (0 to disable)",
-    )
-    p.add_argument(
-        "--augment", type=str, default=None, metavar="PRESET",
-        help=(
-            "augmentation preset filename stem from augmentations/ "
-            "(e.g. --augment paper loads augmentations/paper.yaml)"
-        ),
-    )
-    p.add_argument(
-        "--freeze", type=int, default=0,
-        help="freeze first N backbone layers (0=no freeze, 10=full backbone)",
-    )
-    p.add_argument(
-        "--unfreeze-epoch", type=int, default=0,
-        help=(
-            "epoch at which to unfreeze frozen layers (0=never unfreeze)"
-        ),
-    )
-    p.add_argument(
-        "--lr-unfreeze-factor", type=float, default=1.0,
-        help="multiply all LRs by this factor when backbone is unfrozen",
-    )
-    p.add_argument(
-        "--model", type=str, default=DEFAULT_MODEL,
-        choices=["yolov9s", "yolov9c"], help="model variant to train",
-    )
-    p.add_argument(
-        "--altitude-aware-scale", action="store_true",
-        dest="altitude_aware_scale",
-        help=(
-            "use altitude-aware scale augmentation: sample "
-            "h_target ~ U(alt_min, alt_max), apply s = h / h_target"
-        ),
-    )
-    p.add_argument(
-        "--alt-min", type=float, default=100.0, dest="alt_min",
-        help=(
-            "lower bound of target altitude range in metres "
-            "(altitude-aware scale only, default: 100)"
-        ),
-    )
-    p.add_argument(
-        "--alt-max", type=float, default=300.0, dest="alt_max",
-        help=(
-            "upper bound of target altitude range in metres "
-            "(altitude-aware scale only, default: 300)"
-        ),
-    )
-    p.add_argument(
-        "--alt-mode", type=float, default=None, dest="alt_mode",
-        help=(
-            "peak of a triangular target altitude distribution in metres. "
-            "When omitted, uniform U(alt_min, alt_max) is used. "
-            "(altitude-aware scale only)"
-        ),
-    )
-    p.add_argument(
+    g_run.add_argument(
         "--resume", nargs="?", const=True, default=False,
         metavar="CHECKPOINT",
         help=(
@@ -159,14 +71,130 @@ def parse_args() -> argparse.Namespace:
             "runs/<run-name>/weights/last.pt"
         ),
     )
-    p.add_argument(
+    g_run.add_argument(
         "--wandb-id", type=str, default=None, dest="wandb_id",
         help=(
             "W&B run ID to resume (overrides saved ID; useful for "
             "runs started without --resume support)"
         ),
     )
-    return p.parse_args()
+
+    g_train = p.add_argument_group("training")
+    g_train.add_argument(
+        "--model", type=str, default=DEFAULT_MODEL,
+        choices=["yolov9s", "yolov9c"], help="model variant to train",
+    )
+    g_train.add_argument(
+        "--epochs", type=int, default=DEFAULT_EPOCHS,
+        help="number of training epochs",
+    )
+    g_train.add_argument(
+        "--imgsz", type=int, default=DEFAULT_IMGSZ,
+        help="input image size",
+    )
+    g_train.add_argument(
+        "--batch", type=int, default=DEFAULT_BATCH,
+        help="batch size",
+    )
+    g_train.add_argument(
+        "--workers", type=int, default=DEFAULT_WORKERS,
+        help="number of dataloader workers",
+    )
+    g_train.add_argument(
+        "--cache", type=str, default="disk",
+        choices=["ram", "disk", "off"],
+        help=(
+            "cache images in ram/disk for faster training, "
+            "or off to disable"
+        ),
+    )
+    g_train.add_argument(
+        "--optimizer", type=str, default="AdamW",
+        help="optimizer (AdamW, SGD, MuSGD, ...)",
+    )
+    g_train.add_argument(
+        "--lr0", type=float, default=0.002,
+        help="initial learning rate (AdamW default: 0.002, SGD: 0.01)",
+    )
+    g_train.add_argument(
+        "--patience", type=int, default=DEFAULT_PATIENCE,
+        help="early stopping patience in epochs (0 to disable)",
+    )
+    g_train.add_argument(
+        "--augment", type=str, default=None, metavar="PRESET",
+        help=(
+            "augmentation preset stem from augmentations/ "
+            "(e.g. --augment paper loads augmentations/paper.yaml)"
+        ),
+    )
+
+    g_freeze = p.add_argument_group("freeze / unfreeze")
+    g_freeze.add_argument(
+        "--freeze", type=int, default=0,
+        help=(
+            "freeze first N backbone layers "
+            "(0=no freeze, 10=full backbone)"
+        ),
+    )
+    g_freeze.add_argument(
+        "--unfreeze-epoch", type=int, default=0,
+        help="epoch at which to unfreeze frozen layers (0=never)",
+    )
+    g_freeze.add_argument(
+        "--lr-unfreeze-factor", type=float, default=1.0,
+        help="multiply all LRs by this factor when backbone is unfrozen",
+    )
+
+    g_alt = p.add_argument_group("altitude-aware scale")
+    g_alt.add_argument(
+        "--altitude-aware-scale", action="store_true",
+        dest="altitude_aware_scale",
+        help=(
+            "use altitude-aware scale augmentation: sample "
+            "h_target ~ U(alt_min, alt_max), apply s = h / h_target"
+        ),
+    )
+    g_alt.add_argument(
+        "--alt-min", type=float, default=None, dest="alt_min",
+        help="lower bound of target altitude range in metres (default: 100)",
+    )
+    g_alt.add_argument(
+        "--alt-max", type=float, default=None, dest="alt_max",
+        help="upper bound of target altitude range in metres (default: 300)",
+    )
+    g_alt.add_argument(
+        "--alt-mode", type=float, default=None, dest="alt_mode",
+        help=(
+            "peak of a triangular target altitude distribution in metres; "
+            "omit for uniform U(alt_min, alt_max)"
+        ),
+    )
+
+    args = p.parse_args()
+    _validate_args(p, args)
+    return args
+
+
+def _validate_args(
+        p: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
+    """Raise p.error for cross-argument constraint violations."""
+    if args.wandb_id and not args.resume:
+        p.error("--wandb-id requires --resume")
+
+    if args.unfreeze_epoch > 0 and args.freeze == 0:
+        p.error("--unfreeze-epoch requires --freeze > 0")
+
+    alt_flags = [args.alt_min, args.alt_max, args.alt_mode]
+    if any(v is not None for v in alt_flags) and not args.altitude_aware_scale:
+        p.error(
+            "--alt-min/--alt-max/--alt-mode require --altitude-aware-scale"
+        )
+
+    lo = args.alt_min if args.alt_min is not None else 100.0
+    hi = args.alt_max if args.alt_max is not None else 300.0
+    if lo >= hi:
+        p.error(f"--alt-min ({lo}) must be less than --alt-max ({hi})")
 
 
 def make_unfreeze_callback(
@@ -276,8 +304,8 @@ def resolve_train_kwargs(
     )
     alt_kwargs = (
         {
-            "alt_min":  args.alt_min,
-            "alt_max":  args.alt_max,
+            "alt_min":  args.alt_min  if args.alt_min  is not None else 100.0,
+            "alt_max":  args.alt_max  if args.alt_max  is not None else 300.0,
             "alt_mode": args.alt_mode,
         }
         if args.altitude_aware_scale else {}
