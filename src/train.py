@@ -33,8 +33,12 @@ import globals as g
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
 from altitude_augment import AltitudeAwareOBBTrainer
-from metadata_callback import register_metadata_callbacks
-from typing import Any, Callable, Dict, Optional
+from callbacks import (
+    make_save_wandb_id_callback,
+    make_unfreeze_callback,
+    register_metadata_callbacks,
+)
+from typing import Any, Dict, Optional
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -196,38 +200,6 @@ def _validate_args(
     if lo >= hi:
         p.error(f"--alt-min ({lo}) must be less than --alt-max ({hi})")
 
-
-def make_unfreeze_callback(
-        unfreeze_epoch: int, lr_factor: float = 1.0
-    ) -> Callable:
-    def on_train_epoch_start(trainer):
-        if trainer.epoch == unfreeze_epoch:
-            for _, param in trainer.model.named_parameters():
-                param.requires_grad = True
-            print(
-                f"[unfreeze] All layers unfrozen at epoch {unfreeze_epoch}"
-            )
-            if lr_factor != 1.0:
-                for pg in trainer.optimizer.param_groups:
-                    pg["lr"] *= lr_factor
-                    # keeps the scheduler scaling correctly
-                    pg["initial_lr"] *= lr_factor
-                new_lr = trainer.optimizer.param_groups[0]["lr"]
-                print(
-                    f"[unfreeze] LR scaled by {lr_factor} → {new_lr:.6f}"
-                )
-    return on_train_epoch_start
-
-
-def make_save_wandb_id_callback() -> Callable:
-    def on_train_start(trainer) -> None:
-        if wandb.run is None:
-            return
-        id_file = Path(trainer.save_dir) / "wandb_run_id.txt"
-        id_file.parent.mkdir(parents=True, exist_ok=True)
-        id_file.write_text(wandb.run.id)
-        print(f"[wandb] Run ID saved to {id_file}")
-    return on_train_start
 
 
 def write_dataset_yaml() -> str:
