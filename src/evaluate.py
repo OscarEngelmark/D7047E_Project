@@ -20,7 +20,7 @@ import globals as g
 
 from pathlib import Path
 from ultralytics import YOLO
-from metadata_callback import (
+from callbacks import (
     get_last_bucket_metrics, register_metadata_callbacks
 )
 from train import write_dataset_yaml

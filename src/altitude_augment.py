@@ -1,10 +1,13 @@
 """
 Altitude-aware scale augmentation for YOLO OBB training.
 
-For each training frame at altitude h, a target altitude
-h_target ~ U(alt_min, alt_max) is sampled and scale s = h / h_target
-is applied.  This produces a flat apparent-altitude distribution over
-[alt_min, alt_max] (up to clamping at SCALE_FLOOR / SCALE_CEILING).
+For each training frame at altitude h, a target altitude h_target is
+sampled and scale s = h / h_target is applied, so the apparent altitude
+equals h_target (up to clamping at SCALE_FLOOR / SCALE_CEILING).
+
+Two target distributions are supported:
+  uniform:    h_target ~ U(alt_min, alt_max)          -> flat distribution
+  triangular: h_target ~ Triangular(alt_min, alt_max, alt_mode)
 
 Public API
 ----------
@@ -16,8 +19,10 @@ Notes
 Altitude is injected into the labels dict by AltitudeAwareYOLODataset
 and read by AltitudeAwareRandomPerspective.  When mosaic=0 the labels
 dict passes through Mosaic unchanged.  When mosaic>0, AltitudeAwareMosaic
-preserves altitude_m as the mean of the four component frame altitudes,
-so the affine transform still fires with a valid altitude.
+preserves altitude_m as mosaic_factor * mean(h_i), so the affine transform
+fires with a valid effective altitude.  Because apparent_alt = h_target
+regardless of the effective altitude, the triangular distribution propagates
+through the mosaic path unchanged.
 """
 
 import json
@@ -29,7 +34,7 @@ import cv2
 import numpy as np
 
 import torch.nn as nn
-from typing import cast
+from typing import cast, Dict, List, Optional, Tuple
 
 from ultralytics.data.augment import Compose, Mosaic, RandomPerspective
 from ultralytics.data.dataset import YOLODataset
@@ -47,7 +52,7 @@ def compute_scale_bounds(
     altitude_m: float,
     alt_min: float,
     alt_max: float,
-) -> tuple[float, float]:
+) -> Tuple[float, float]:
     """Return (s_lo, s_hi) for altitude-aware scale augmentation.
 
     s = h / h_target; targeting h_max gives s_lo, h_min gives s_hi.
@@ -71,18 +76,20 @@ class AltitudeAwareRandomPerspective(RandomPerspective):
         self,
         alt_min: float = 100.0,
         alt_max: float = 300.0,
+        alt_mode: Optional[float] = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.alt_min = alt_min
         self.alt_max = alt_max
-        self._altitude_m: float | None = None
+        self.alt_mode = alt_mode
+        self._altitude_m: Optional[float] = None
 
     def affine_transform(
         self,
         img: np.ndarray,
-        border: tuple[int, int],
-    ) -> tuple[np.ndarray, np.ndarray, float]:
+        border: Tuple[int, int],
+    ) -> Tuple[np.ndarray, np.ndarray, float]:
         """Identical to RandomPerspective.affine_transform except uses
         self._scale_lo / self._scale_hi for the scale sample."""
         C = np.eye(3, dtype=np.float32)
@@ -96,7 +103,12 @@ class AltitudeAwareRandomPerspective(RandomPerspective):
         R = np.eye(3, dtype=np.float32)
         a = random.uniform(-self.degrees, self.degrees)
         if self._altitude_m is not None:
-            h_target = random.uniform(self.alt_min, self.alt_max)
+            if self.alt_mode is not None:
+                h_target = random.triangular(
+                    self.alt_min, self.alt_max, self.alt_mode
+                )
+            else:
+                h_target = random.uniform(self.alt_min, self.alt_max)
             s = float(np.clip(
                 self._altitude_m / h_target, SCALE_FLOOR, SCALE_CEILING
             ))
@@ -145,7 +157,7 @@ class AltitudeAwareRandomPerspective(RandomPerspective):
                 img = img[..., None]
         return img, M, s
 
-    def __call__(self, labels: dict) -> dict:
+    def __call__(self, labels: Dict) -> Dict:
         altitude_m = labels.get("altitude_m")
         self._altitude_m = (
             float(altitude_m) if altitude_m is not None else None
@@ -157,16 +169,18 @@ def _swap_affine(
     transforms: Compose,
     alt_min: float,
     alt_max: float,
+    alt_mode: Optional[float] = None,
 ) -> None:
     """In-place: replace RandomPerspective with AltitudeAwareRandomPerspective
     everywhere inside a Compose tree."""
     for i, t in enumerate(transforms.transforms):
         if isinstance(t, Compose):
-            _swap_affine(t, alt_min, alt_max)
+            _swap_affine(t, alt_min, alt_max, alt_mode)
         elif type(t) is RandomPerspective:
             transforms.transforms[i] = AltitudeAwareRandomPerspective(
                 alt_min=alt_min,
                 alt_max=alt_max,
+                alt_mode=alt_mode,
                 degrees=t.degrees,
                 translate=t.translate,
                 scale=t.scale,
@@ -193,7 +207,7 @@ class AltitudeAwareMosaic(Mosaic):
     correct h_target.
     """
 
-    def _cat_labels(self, mosaic_labels: list) -> dict:
+    def _cat_labels(self, mosaic_labels: List) -> Dict:
         final_labels = super()._cat_labels(mosaic_labels)
         alts = [
             float(lbl["altitude_m"])
@@ -232,11 +246,13 @@ class AltitudeAwareYOLODataset(YOLODataset):
         *args,
         alt_min: float = 100.0,
         alt_max: float = 300.0,
+        alt_mode: Optional[float] = None,
         metadata_path: Path = g.OUT_DIR / "metadata.json",
         **kwargs,
     ) -> None:
         self.alt_min = alt_min
         self.alt_max = alt_max
+        self.alt_mode = alt_mode
         with open(metadata_path) as f:
             raw: dict = json.load(f)
         self._stem_to_alt: dict[str, float] = {
@@ -246,7 +262,7 @@ class AltitudeAwareYOLODataset(YOLODataset):
         }
         super().__init__(*args, **kwargs)
 
-    def get_image_and_label(self, index: int) -> dict:
+    def get_image_and_label(self, index: int) -> Dict:
         label = super().get_image_and_label(index)
         stem = Path(label["im_file"]).stem
         alt = self._stem_to_alt.get(stem)
@@ -258,7 +274,7 @@ class AltitudeAwareYOLODataset(YOLODataset):
         transforms = super().build_transforms(hyp)
         if self.augment:
             _swap_mosaic(transforms)
-            _swap_affine(transforms, self.alt_min, self.alt_max)
+            _swap_affine(transforms, self.alt_min, self.alt_max, self.alt_mode)
         return transforms
 
 
@@ -272,19 +288,21 @@ class AltitudeAwareOBBTrainer(OBBTrainer):
     def __init__(
         self,
         cfg=DEFAULT_CFG,
-        overrides: dict | None = None,
-        _callbacks: dict | None = None,
+        overrides: Optional[Dict] = None,
+        _callbacks: Optional[Dict] = None,
     ) -> None:
         overrides = dict(overrides or {})
         self.alt_min = float(overrides.pop("alt_min", 100.0))
         self.alt_max = float(overrides.pop("alt_max", 300.0))
+        _mode = overrides.pop("alt_mode", None)
+        self.alt_mode = float(_mode) if _mode is not None else None
         super().__init__(cfg, overrides, _callbacks)
 
     def build_dataset(
         self,
         img_path: str,
         mode: str = "train",
-        batch: int | None = None,
+        batch: Optional[int] = None,
     ):
         if mode != "train":
             return super().build_dataset(img_path, mode, batch)
@@ -308,4 +326,5 @@ class AltitudeAwareOBBTrainer(OBBTrainer):
             fraction=self.args.fraction,
             alt_min=self.alt_min,
             alt_max=self.alt_max,
+            alt_mode=self.alt_mode,
         )
