@@ -243,7 +243,7 @@ def _on_fit_epoch_end(trainer) -> None:
     if wandb.run is None:
         return
 
-    log: Dict[str, Any] = {"epoch": trainer.epoch}
+    log: Dict[str, Any] = {"epoch": trainer.epoch + 1}
     if getattr(trainer, "tloss", None) is not None:
         log.update(trainer.label_loss_items(trainer.tloss, prefix="train"))
     log.update(trainer.metrics)
