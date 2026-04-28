@@ -318,7 +318,6 @@ def resolve_train_kwargs(
         "freeze":       args.freeze if args.freeze > 0 else None,
         "close_mosaic": 0,
         "save_period":  10,
-        "clip_grad":    10.0,
         "compile":      torch.cuda.is_available(),
         "device":       g.DEVICE,
         "seed":         g.SEED,
