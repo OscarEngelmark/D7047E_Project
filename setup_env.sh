@@ -8,14 +8,14 @@ apt-get install -y git libgl1
 
 echo "==> Creating virtual environment..."
 if [ ! -d ".venv" ]; then
-    python -m venv .venv
+    python3 -m venv --clear .venv
 else
     echo "    .venv already exists, skipping."
 fi
 
 echo "==> Installing Python dependencies..."
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install --upgrade protobuf
+.venv/bin/pip install --no-user -r requirements.txt
+.venv/bin/pip install --no-user --upgrade protobuf
 
 echo "==> Configuring Ultralytics integrations..."
 .venv/bin/python -c "from ultralytics import settings; settings.update({'wandb': True})"
