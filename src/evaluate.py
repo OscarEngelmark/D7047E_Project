@@ -11,10 +11,12 @@ python src/evaluate.py --weights runs/<run>/weights/best.pt --run-name my-eval
 """
 
 import os
+import csv
 import argparse
 import matplotlib.pyplot as plt
 import globals as g
 
+from datetime import datetime
 from pathlib import Path
 from ultralytics import YOLO
 from callbacks import get_last_bucket_metrics, register_metadata_callbacks
@@ -30,6 +32,32 @@ METRICS = [
     ("mAP50",      "mAP50"),
     ("mAP50-95",   "mAP50-95"),
 ]
+
+
+CSV_PATH = g.RESULTS_DIR / "evaluations.csv"
+CSV_FIELDS = ["timestamp", "run_name", "weights", "precision", "recall",
+              "mAP50", "mAP50-95"]
+
+
+def save_metrics_csv(
+    run_name: str,
+    weights: Path,
+    overall: Dict[str, float],
+) -> None:
+    write_header = not CSV_PATH.exists()
+    with CSV_PATH.open("a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        if write_header:
+            writer.writeheader()
+        writer.writerow({
+            "timestamp":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "run_name":   run_name,
+            "weights":    str(weights),
+            "precision":  f"{overall['precision']:.4f}",
+            "recall":     f"{overall['recall']:.4f}",
+            "mAP50":      f"{overall['mAP50']:.4f}",
+            "mAP50-95":   f"{overall['mAP50-95']:.4f}",
+        })
 
 
 def plot_metrics(
@@ -151,6 +179,8 @@ def main() -> None:
     print(f"Test recall:    {overall['recall']:.4f}")
     out = plot_metrics(overall, get_last_bucket_metrics(), run_name)
     print(f"Plot saved to:  {out}")
+    save_metrics_csv(run_name, weights_path, overall)
+    print(f"Metrics saved to: {CSV_PATH}")
 
 
 if __name__ == "__main__":
