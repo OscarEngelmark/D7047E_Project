@@ -40,7 +40,6 @@ CSV_FIELDS = ["timestamp", "run_name", "weights", "precision", "recall",
 
 
 def save_metrics_csv(
-    run_name: str,
     weights: Path,
     overall: Dict[str, float],
 ) -> None:
@@ -51,8 +50,8 @@ def save_metrics_csv(
             writer.writeheader()
         writer.writerow({
             "timestamp":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "run_name":   run_name,
-            "weights":    str(weights),
+            "run_name":   weights.parent.parent.name,
+            "weights":    weights.name,
             "precision":  f"{overall['precision']:.4f}",
             "recall":     f"{overall['recall']:.4f}",
             "mAP50":      f"{overall['mAP50']:.4f}",
@@ -179,7 +178,7 @@ def main() -> None:
     print(f"Test recall:    {overall['recall']:.4f}")
     out = plot_metrics(overall, get_last_bucket_metrics(), run_name)
     print(f"Plot saved to:  {out}")
-    save_metrics_csv(run_name, weights_path, overall)
+    save_metrics_csv(weights_path, overall)
     print(f"Metrics saved to: {CSV_PATH}")
 
 
