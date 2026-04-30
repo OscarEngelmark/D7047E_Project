@@ -32,6 +32,7 @@ SRC_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SRC_DIR))
 
 import globals as g
+import plot_style
 
 IMG_W = 1920
 IMG_H = 1080
@@ -46,9 +47,12 @@ def parse_args() -> argparse.Namespace:
         help="which splits to include (default: all)",
     )
     p.add_argument(
-        "--out", type=Path,
-        default=g.RESULTS_DIR / "size_vs_altitude.png",
-        help="output path",
+        "--out", type=Path, default=None,
+        help="output path (default: results/size_vs_altitude.{pdf|png})",
+    )
+    p.add_argument(
+        "--style", choices=plot_style.STYLES, default=None,
+        help="output style: 'report' (PDF, small fonts) or 'ppt' (PNG, large fonts)",
     )
     return p.parse_args()
 
@@ -136,6 +140,12 @@ def print_thresholds(C: float, n: int) -> None:
 def main() -> None:
     args = parse_args()
 
+    fmt = plot_style.output_fmt(args.style) if args.style else "png"
+    dpi = plot_style.save_dpi(args.style) if args.style else 150
+    if args.out is None:
+        args.out = g.RESULTS_DIR / f"size_vs_altitude.{fmt}"
+    if args.style:
+        plot_style.apply_style(args.style)
     print(f"Loading data from splits: {args.splits} …")
     altitudes, short_sides = load_data(args.splits)
     print(f"  {len(altitudes):,} boxes with altitude loaded.")
@@ -144,7 +154,8 @@ def main() -> None:
     print_thresholds(C, len(altitudes))
 
     # ── plot ─────────────────────────────────────────────────────────────
-    fig, ax = plt.subplots(figsize=(9, 6))
+    fs = plot_style.figsize(args.style) if args.style else (9, 6)
+    fig, ax = plt.subplots(figsize=fs)
 
     ax.scatter(
         altitudes, short_sides,
@@ -194,14 +205,14 @@ def main() -> None:
         f"Box size vs altitude  "
         f"(splits: {', '.join(args.splits)},  n={len(altitudes):,})"
     )
-    ax.legend(fontsize=8, loc="upper right")
+    ax.legend(loc="upper right")
     ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
     ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
     ax.set_xlim(left=h_lo)
 
     fig.tight_layout()
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(args.out, dpi=150, bbox_inches="tight")
+    plt.savefig(args.out, dpi=dpi, bbox_inches="tight")
     print(f"Saved → {args.out}")
     plt.show()
 

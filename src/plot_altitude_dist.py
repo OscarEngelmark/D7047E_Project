@@ -44,6 +44,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import globals as g
+import plot_style
 from altitude_augment import SCALE_CEILING, SCALE_FLOOR
 
 SPLITS = ["train", "val", "test"]
@@ -57,9 +58,12 @@ DEFAULT_N_SAMPLES = 100
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
-        "--out", type=Path,
-        default=g.RESULTS_DIR / "altitude_dist.png",
-        help="Output path (default: results/altitude_dist.png)",
+        "--out", type=Path, default=None,
+        help="Output path (default: results/altitude_dist.{pdf|png})",
+    )
+    p.add_argument(
+        "--style", choices=plot_style.STYLES, default=None,
+        help="Output style: 'report' (PDF, small fonts) or 'ppt' (PNG, large fonts)",
     )
     p.add_argument(
         "--bins", type=int, default=100,
@@ -244,7 +248,7 @@ def plot_histograms(
         ax.set_title(label.capitalize())
         ax.set_xlabel("Estimated altitude (m)")
         ax.set_ylabel("Car count")
-        ax.legend(fontsize=9)
+        ax.legend()
 
     y_max = max(ax.get_ylim()[1] for ax in axes)
     for ax in axes:
@@ -253,6 +257,12 @@ def plot_histograms(
 
 def main() -> None:
     args = parse_args()
+    fmt = plot_style.output_fmt(args.style) if args.style else "png"
+    dpi = plot_style.save_dpi(args.style) if args.style else 150
+    if args.out is None:
+        args.out = g.RESULTS_DIR / f"altitude_dist.{fmt}"
+    if args.style:
+        plot_style.apply_style(args.style)
     rng = np.random.default_rng(args.seed)
 
     with open(g.OUT_DIR / "metadata.json") as f:
@@ -311,8 +321,9 @@ def main() -> None:
         else:
             title = "Altitude distribution by split"
 
+    fs = plot_style.figsize(args.style, n_rows=3) if args.style else (12, 10)
     fig, axes = plt.subplots(
-        3, 1, figsize=(12, 10), sharex=True, squeeze=False
+        3, 1, figsize=fs, sharex=True, squeeze=False
     )
     plot_histograms(
         by_split, aug_alts, aug_weights,
@@ -321,11 +332,11 @@ def main() -> None:
         x_max=args.x_max,
         train_augmented=train_augmented,
     )
-    fig.suptitle(title, fontsize=11)
+    fig.suptitle(title)
 
     plt.tight_layout()
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(args.out, dpi=150)
+    plt.savefig(args.out, dpi=dpi, bbox_inches="tight")
     print(f"Saved → {args.out}")
     plt.show()
 

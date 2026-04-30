@@ -25,21 +25,31 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import globals as g
+import plot_style
 from frame_metadata import load_video_csv, estimate_altitudes_with_fit
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
-        "--out", type=Path,
-        default=g.RESULTS_DIR / "altitudes.png",
-        help="where to save the figure (default: data/processed/altitude.png)",
+        "--out", type=Path, default=None,
+        help="output path (default: results/altitudes.{pdf|png})",
+    )
+    p.add_argument(
+        "--style", choices=plot_style.STYLES, default=None,
+        help="output style: 'report' (PDF, small fonts) or 'ppt' (PNG, large fonts)",
     )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    fmt = plot_style.output_fmt(args.style) if args.style else "png"
+    dpi = plot_style.save_dpi(args.style) if args.style else 150
+    if args.out is None:
+        args.out = g.RESULTS_DIR / f"altitudes.{fmt}"
+    if args.style:
+        plot_style.apply_style(args.style)
 
     with open(g.OUT_DIR / "metadata.json") as f:
         metadata: Dict[str, Dict[str, Any]] = json.load(f)
@@ -53,9 +63,11 @@ def main() -> None:
 
     videos    = sorted(by_video)
     n_videos  = len(videos)
-    fig, axes = plt.subplots(
-        2, n_videos, figsize=(5 * n_videos, 8), squeeze=False
+    fs = (
+        plot_style.figsize(args.style, n_rows=2, n_cols=n_videos)
+        if args.style else (5 * n_videos, 8)
     )
+    fig, axes = plt.subplots(2, n_videos, figsize=fs, squeeze=False)
 
     for col, video_stem in enumerate(videos):
         frames_sorted = sorted(
@@ -98,10 +110,10 @@ def main() -> None:
                 f_dense, diag_poly, "r-", lw=1.5,
                 label="poly fit (1/l → px)",
             )
-        ax_top.set_title(video_stem.replace("_", " "), fontsize=8)
+        ax_top.set_title(video_stem.replace("_", " "))
         ax_top.set_xlabel("frame index")
         ax_top.set_ylabel("mean diagonal (px)")
-        ax_top.legend(fontsize=7)
+        ax_top.legend()
 
         # ── bottom: altitude scatter + polynomial in altitude space ─────────
         ax_bot = axes[1, col]
@@ -124,13 +136,13 @@ def main() -> None:
 
         ax_bot.set_xlabel("frame index")
         ax_bot.set_ylabel("altitude (m)")
-        ax_bot.legend(fontsize=7)
+        ax_bot.legend()
 
-    fig.suptitle("Altitude sanity check — per video", fontsize=11)
+    fig.suptitle("Altitude sanity check — per video")
     plt.tight_layout()
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(args.out, dpi=150)
+    plt.savefig(args.out, dpi=dpi, bbox_inches="tight")
     print(f"Saved → {args.out}")
     plt.show()
 
