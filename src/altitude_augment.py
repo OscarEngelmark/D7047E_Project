@@ -313,7 +313,12 @@ class AltitudeAwareOBBTrainer(OBBTrainer):
             not v.is_floating_point() or v.isfinite().all()
             for v in model_sd.values()
         ):
-            self.ema.ema.load_state_dict(model_sd)
+            for name, p in self.ema.ema.named_parameters():
+                if name in model_sd:
+                    p.data.copy_(model_sd[name])
+            for name, b in self.ema.ema.named_buffers():
+                if name in model_sd:
+                    b.data.copy_(model_sd[name])
             LOGGER.warning(
                 "NaN/Inf in EMA after update; "
                 "reset to current model weights"
