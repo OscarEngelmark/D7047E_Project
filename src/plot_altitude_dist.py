@@ -63,7 +63,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--style", choices=plot_style.STYLES, default=None,
-        help="Output style: 'report' (PDF, small fonts) or 'ppt' (PNG, large fonts)",
+        help="Output style: 'report' (PDF, small fonts) or 'ppt' "
+             "(PNG, large fonts)",
     )
     p.add_argument(
         "--bins", type=int, default=100,
