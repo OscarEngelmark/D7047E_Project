@@ -45,6 +45,7 @@ def save_metrics_csv(
     overall: Dict[str, float],
     split: str,
 ) -> None:
+    g.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     write_header = not CSV_PATH.exists()
     with CSV_PATH.open("a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)

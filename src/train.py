@@ -209,6 +209,7 @@ def _validate_args(
 def write_dataset_yaml() -> str:
     """Regenerate dataset.yaml with the correct absolute path for this
     machine."""
+    g.OUT_DIR.mkdir(parents=True, exist_ok=True)
     cfg = {
         "path":  str(g.OUT_DIR.resolve()),
         "train": "images/train",
@@ -241,6 +242,7 @@ def resolve_model(args: argparse.Namespace) -> YOLO:
         print(f"Resuming from: {ckpt}")
         return YOLO(str(ckpt))
     model_cfg = g.PROJECT_DIR / "configs" / f"{args.model}-obb.yaml"
+    g.MODELS_DIR.mkdir(parents=True, exist_ok=True)
     weights   = g.MODELS_DIR / f"{args.model}.pt"
     if not weights.exists():
         attempt_download_asset(str(weights))
