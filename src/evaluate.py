@@ -1,5 +1,5 @@
 """
-Evaluate a trained YOLOv9-OBB checkpoint on the test split.
+Evaluate a trained YOLOv9-OBB checkpoint on the test or val split.
 
 Prints overall and per-bucket metrics, then saves a 2×2 bar-chart PNG to
 results/<run-name>.png.
@@ -7,6 +7,7 @@ results/<run-name>.png.
 Usage
 -----
 python src/evaluate.py --weights runs/<run>/weights/best.pt
+python src/evaluate.py --weights runs/<run>/weights/best.pt --split val
 python src/evaluate.py --weights runs/<run>/weights/best.pt --run-name my-eval
 """
 
@@ -35,13 +36,14 @@ METRICS = [
 
 
 CSV_PATH = g.RESULTS_DIR / "evaluations.csv"
-CSV_FIELDS = ["timestamp", "run_name", "weights", "precision", "recall",
-              "mAP50", "mAP50-95"]
+CSV_FIELDS = ["timestamp", "run_name", "weights", "split", "precision",
+              "recall", "mAP50", "mAP50-95"]
 
 
 def save_metrics_csv(
     weights: Path,
     overall: Dict[str, float],
+    split: str,
 ) -> None:
     write_header = not CSV_PATH.exists()
     with CSV_PATH.open("a", newline="") as f:
@@ -52,6 +54,7 @@ def save_metrics_csv(
             "timestamp":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "run_name":   weights.parent.parent.name,
             "weights":    weights.name,
+            "split":      split,
             "precision":  f"{overall['precision']:.4f}",
             "recall":     f"{overall['recall']:.4f}",
             "mAP50":      f"{overall['mAP50']:.4f}",
@@ -63,6 +66,7 @@ def plot_metrics(
     overall: Dict[str, float],
     bucket_metrics: Dict[str, float],
     run_name: str,
+    split: str = "test",
 ) -> Path:
     """Save a 2x2 grid of bar charts — one per metric — to RESULTS_DIR."""
     bucket_labels = [label for label, *_ in g.ALTITUDE_BUCKETS]
@@ -78,7 +82,7 @@ def plot_metrics(
         x_labels.append(f"{b}\n({n} cars)")
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    fig.suptitle(f"Test metrics — {run_name}", fontsize=14)
+    fig.suptitle(f"{split.capitalize()} metrics — {run_name}", fontsize=14)
 
     for ax, (title, key) in zip(axes.flat, METRICS):
         values = [overall[key]]
@@ -132,6 +136,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--workers", type=int, default=16,
     )
+    p.add_argument(
+        "--split", type=str, default="test", choices=["test", "val"],
+        help="dataset split to evaluate on (default: test)",
+    )
     return p.parse_args()
 
 
@@ -155,7 +163,7 @@ def main() -> None:
 
     results = model.val(
         data=dataset_yaml,
-        split="test",
+        split=args.split,
         imgsz=args.imgsz,
         batch=args.batch,
         workers=args.workers,
@@ -172,13 +180,16 @@ def main() -> None:
         "mAP50-95":  float(box.map),
     }
 
-    print(f"\nTest mAP50:   {overall['mAP50']:.4f}")
-    print(f"Test mAP50-95:  {overall['mAP50-95']:.4f}")
-    print(f"Test precision: {overall['precision']:.4f}")
-    print(f"Test recall:    {overall['recall']:.4f}")
-    out = plot_metrics(overall, get_last_bucket_metrics(), run_name)
+    s = args.split.capitalize()
+    print(f"\n{s} mAP50:      {overall['mAP50']:.4f}")
+    print(f"{s} mAP50-95:   {overall['mAP50-95']:.4f}")
+    print(f"{s} precision:  {overall['precision']:.4f}")
+    print(f"{s} recall:     {overall['recall']:.4f}")
+    out = plot_metrics(
+        overall, get_last_bucket_metrics(), run_name, args.split
+    )
     print(f"Plot saved to:  {out}")
-    save_metrics_csv(weights_path, overall)
+    save_metrics_csv(weights_path, overall, args.split)
     print(f"Metrics saved to: {CSV_PATH}")
 
 
