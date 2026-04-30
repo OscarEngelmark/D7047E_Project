@@ -14,15 +14,26 @@ Output structure:
 import json
 import zipfile
 import xml.etree.ElementTree as ET
-import cv2
-import yaml
-import numpy as np
-import globals as g
-
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+import cv2
+import globals as g
+import numpy as np
+import yaml
+
 from frame_metadata import load_video_csv, compute_frame_metadata
+
+JPEG_QUALITY = 95
+
+SPLIT_MAP: Dict[str, str] = {
+    "2022-12-02 Asjo 01_stabilized.zip":      "train",
+    "2022-12-04 Bjenberg 02.zip":             "train",
+    "2022-12-23 Asjo 01_HD 5x stab.zip":      "train",
+    "2022-12-03 Nyland 01_stabilized.zip":    "val",
+    "2022-12-23 Bjenberg 02_stabilized.zip":  "test",
+}
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -179,7 +190,7 @@ def process_video_zip(
             stem = frame_stem(zip_stem, frame_id)
             cv2.imwrite(
                 str(img_dir / f"{stem}.jpg"), frame,
-                [cv2.IMWRITE_JPEG_QUALITY, g.JPEG_QUALITY],
+                [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
             )
             save_label(
                 lbl_dir / f"{stem}.txt",
@@ -237,7 +248,7 @@ def process_frames_zip(
         cv2.imwrite(
             filename=str(img_dir / f"{stem}.jpg"),
             img=frame,
-            params=[cv2.IMWRITE_JPEG_QUALITY, g.JPEG_QUALITY]
+            params=[cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
         )
         save_label(
             lbl_dir / f"{stem}.txt",
@@ -267,7 +278,7 @@ def main() -> None:
     total_saved = 0
     metadata: Dict[str, Dict[str, Any]] = {}
 
-    for zip_name, split in g.SPLIT_MAP.items():
+    for zip_name, split in SPLIT_MAP.items():
         zip_path = g.DATA_DIR / zip_name
         if not zip_path.exists():
             print(f"[SKIP] {zip_name} not found")

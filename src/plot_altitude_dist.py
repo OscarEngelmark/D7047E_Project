@@ -44,6 +44,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import globals as g
+from altitude_augment import SCALE_CEILING, SCALE_FLOOR
 
 SPLITS = ["train", "val", "test"]
 COLORS = {"train": "#4C72B0", "val": "#DD8452", "test": "#55A868"}
@@ -51,8 +52,6 @@ TRAIN_AUG_COLOR = "#9467BD"
 
 DEFAULT_SCALE = 0.0
 DEFAULT_N_SAMPLES = 100
-SCALE_FLOOR = 0.1   # minimum feasible image scale factor
-SCALE_CEILING = 4.0  # maximum feasible image scale factor
 
 
 def parse_args() -> argparse.Namespace:
