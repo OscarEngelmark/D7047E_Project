@@ -33,12 +33,11 @@ WANDB_ENTITY  = "d7047e-group12"
 WANDB_PROJECT = "Project-NVD"
 
 # ── paths ───────────────────────────────────────────────────────────────────
-SRC_DIR     = Path(__file__).resolve().parent   # …/Project/src
-PROJECT_DIR = SRC_DIR.parent                    # …/Project
+PROJECT_DIR = Path(__file__).resolve().parent.parent   # …/Project
 DATA_DIR    = PROJECT_DIR / "data"
-OUT_DIR     = DATA_DIR / "processed"
-IMG_DIR     = OUT_DIR / "images"
-LBL_DIR     = OUT_DIR / "labels"
+OUT_DIR     = PROJECT_DIR / "data" / "processed"
+IMG_DIR     = PROJECT_DIR / "data" / "processed" / "images"
+LBL_DIR     = PROJECT_DIR / "data" / "processed" / "labels"
 MODELS_DIR  = PROJECT_DIR / "models"
 RESULTS_DIR = PROJECT_DIR / "results"
 AUGS_DIR    = PROJECT_DIR / "augmentations"
