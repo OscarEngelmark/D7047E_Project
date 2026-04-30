@@ -7,16 +7,20 @@ Panels (shared x-axis):
 
 Usage
 -----
-    cd src && python plot_aug_comparison.py
-    cd src && python plot_aug_comparison.py --split train
-    cd src && python plot_aug_comparison.py --scale 0.7 --mosaic
-    cd src && python plot_aug_comparison.py --alt-min 80 --alt-max 400
-    cd src && python plot_aug_comparison.py --style report
+    cd src && python plots/aug_comparison.py
+    cd src && python plots/aug_comparison.py --split train
+    cd src && python plots/aug_comparison.py --scale 0.7 --mosaic
+    cd src && python plots/aug_comparison.py --alt-min 80 --alt-max 400
+    cd src && python plots/aug_comparison.py --style report
 """
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse
 import json
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.axes
@@ -24,8 +28,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import globals as g
-import plot_style
-from plot_altitude_dist import (
+import style
+from altitude_dist import (
     DEFAULT_N_SAMPLES,
     augment_train,
     augment_train_altitude_aware,
@@ -55,7 +59,7 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
-        "--style", choices=plot_style.STYLES, default=None,
+        "--style", choices=style.STYLES, default=None,
         help="Output style: 'report' (PDF) or 'ppt' (PNG)",
     )
     p.add_argument(
@@ -135,14 +139,14 @@ def plot_panels(
 
 def main() -> None:
     args = parse_args()
-    fmt = plot_style.output_fmt(args.style) if args.style else "png"
-    dpi = plot_style.save_dpi(args.style) if args.style else 150
+    fmt = style.output_fmt(args.style) if args.style else "png"
+    dpi = style.save_dpi(args.style) if args.style else 150
     if args.out is None:
         args.out = (
             g.RESULTS_DIR / f"aug_comparison_{args.split}.{fmt}"
         )
     if args.style:
-        plot_style.apply_style(args.style)
+        style.apply_style(args.style)
 
     rng = np.random.default_rng(args.seed)
 
@@ -200,7 +204,7 @@ def main() -> None:
     ]
 
     fs = (
-        plot_style.figsize(args.style, n_rows=3)
+        style.figsize(args.style, n_rows=3)
         if args.style else (9, 10)
     )
     fig, axes = plt.subplots(3, 1, figsize=fs, sharex=True, squeeze=False)

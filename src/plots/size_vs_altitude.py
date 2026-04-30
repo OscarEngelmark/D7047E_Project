@@ -13,26 +13,27 @@ can no longer resolve the object.
 
 Usage
 -----
-    cd src && python plot_size_vs_altitude.py
-    python src/plot_size_vs_altitude.py --splits train val
-    python src/plot_size_vs_altitude.py --out results/size_vs_altitude.png
+    cd src && python plots/size_vs_altitude.py
+    cd src && python plots/size_vs_altitude.py --splits train val
+    cd src && python plots/size_vs_altitude.py \
+        --out results/size_vs_altitude.png
 """
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse
 import json
-import sys
-from pathlib import Path
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-SRC_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SRC_DIR))
-
 import globals as g
-import plot_style
+import style
 
 IMG_W = 1920
 IMG_H = 1080
@@ -51,8 +52,9 @@ def parse_args() -> argparse.Namespace:
         help="output path (default: results/size_vs_altitude.{pdf|png})",
     )
     p.add_argument(
-        "--style", choices=plot_style.STYLES, default=None,
-        help="output style: 'report' (PDF, small fonts) or 'ppt' (PNG, large fonts)",
+        "--style", choices=style.STYLES, default=None,
+        help="output style: 'report' (PDF, small fonts) or 'ppt' "
+             "(PNG, large fonts)",
     )
     return p.parse_args()
 
@@ -140,12 +142,12 @@ def print_thresholds(C: float, n: int) -> None:
 def main() -> None:
     args = parse_args()
 
-    fmt = plot_style.output_fmt(args.style) if args.style else "png"
-    dpi = plot_style.save_dpi(args.style) if args.style else 150
+    fmt = style.output_fmt(args.style) if args.style else "png"
+    dpi = style.save_dpi(args.style) if args.style else 150
     if args.out is None:
         args.out = g.RESULTS_DIR / f"size_vs_altitude.{fmt}"
     if args.style:
-        plot_style.apply_style(args.style)
+        style.apply_style(args.style)
     print(f"Loading data from splits: {args.splits} …")
     altitudes, short_sides = load_data(args.splits)
     print(f"  {len(altitudes):,} boxes with altitude loaded.")
@@ -154,7 +156,7 @@ def main() -> None:
     print_thresholds(C, len(altitudes))
 
     # ── plot ─────────────────────────────────────────────────────────────
-    fs = plot_style.figsize(args.style) if args.style else (9, 6)
+    fs = style.figsize(args.style) if args.style else (9, 6)
     fig, ax = plt.subplots(figsize=fs)
 
     ax.scatter(

@@ -11,21 +11,25 @@ data/video_data.csv.  Produces one column per video with two rows:
 
 Usage
 -----
-    python src/plot_altitude.py
-    python src/plot_altitude.py --out results/altitude.png
+    cd src && python plots/altitudes.py
+    cd src && python plots/altitudes.py --out results/altitudes.png
 """
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse
 import json
 from collections import defaultdict
-from pathlib import Path
 from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 import globals as g
-import plot_style
+import style
 from frame_metadata import load_video_csv, estimate_altitudes_with_fit
 
 
@@ -36,20 +40,21 @@ def parse_args() -> argparse.Namespace:
         help="output path (default: results/altitudes.{pdf|png})",
     )
     p.add_argument(
-        "--style", choices=plot_style.STYLES, default=None,
-        help="output style: 'report' (PDF, small fonts) or 'ppt' (PNG, large fonts)",
+        "--style", choices=style.STYLES, default=None,
+        help="output style: 'report' (PDF, small fonts) or 'ppt' "
+             "(PNG, large fonts)",
     )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    fmt = plot_style.output_fmt(args.style) if args.style else "png"
-    dpi = plot_style.save_dpi(args.style) if args.style else 150
+    fmt = style.output_fmt(args.style) if args.style else "png"
+    dpi = style.save_dpi(args.style) if args.style else 150
     if args.out is None:
         args.out = g.RESULTS_DIR / f"altitudes.{fmt}"
     if args.style:
-        plot_style.apply_style(args.style)
+        style.apply_style(args.style)
 
     with open(g.OUT_DIR / "metadata.json") as f:
         metadata: Dict[str, Dict[str, Any]] = json.load(f)
@@ -64,7 +69,7 @@ def main() -> None:
     videos    = sorted(by_video)
     n_videos  = len(videos)
     fs = (
-        plot_style.figsize(args.style, n_rows=2, n_cols=n_videos)
+        style.figsize(args.style, n_rows=2, n_cols=n_videos)
         if args.style else (5 * n_videos, 8)
     )
     fig, axes = plt.subplots(2, n_videos, figsize=fs, squeeze=False)

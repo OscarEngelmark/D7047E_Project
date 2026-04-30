@@ -25,18 +25,23 @@ is preserved.
 
 Usage
 -----
-    python plot_altitude_dist.py
-    python plot_altitude_dist.py --scale 0.7
-    python plot_altitude_dist.py --altitude-aware
-    python plot_altitude_dist.py --altitude-aware --alt-min 80 --alt-max 400
-    python plot_altitude_dist.py --altitude-aware --dist triangular \
-        --alt-mode 250
-    python plot_altitude_dist.py --out results/altitude_dist.png
+    cd src && python plots/altitude_dist.py
+    cd src && python plots/altitude_dist.py --scale 0.7
+    cd src && python plots/altitude_dist.py --altitude-aware
+    cd src && python plots/altitude_dist.py --altitude-aware --alt-min 80 \
+        --alt-max 400
+    cd src && python plots/altitude_dist.py --altitude-aware \
+        --dist triangular --alt-mode 250
+    cd src && python plots/altitude_dist.py --out results/altitude_dist.png
 """
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse
 import json
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.axes
@@ -44,7 +49,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import globals as g
-import plot_style
+import style
 from altitude_augment import SCALE_CEILING, SCALE_FLOOR
 
 SPLITS = ["train", "val", "test"]
@@ -62,7 +67,7 @@ def parse_args() -> argparse.Namespace:
         help="Output path (default: results/altitude_dist.{pdf|png})",
     )
     p.add_argument(
-        "--style", choices=plot_style.STYLES, default=None,
+        "--style", choices=style.STYLES, default=None,
         help="Output style: 'report' (PDF, small fonts) or 'ppt' "
              "(PNG, large fonts)",
     )
@@ -258,12 +263,12 @@ def plot_histograms(
 
 def main() -> None:
     args = parse_args()
-    fmt = plot_style.output_fmt(args.style) if args.style else "png"
-    dpi = plot_style.save_dpi(args.style) if args.style else 150
+    fmt = style.output_fmt(args.style) if args.style else "png"
+    dpi = style.save_dpi(args.style) if args.style else 150
     if args.out is None:
         args.out = g.RESULTS_DIR / f"altitude_dist.{fmt}"
     if args.style:
-        plot_style.apply_style(args.style)
+        style.apply_style(args.style)
     rng = np.random.default_rng(args.seed)
 
     with open(g.OUT_DIR / "metadata.json") as f:
@@ -322,7 +327,7 @@ def main() -> None:
         else:
             title = "Altitude distribution by split"
 
-    fs = plot_style.figsize(args.style, n_rows=3) if args.style else (12, 10)
+    fs = style.figsize(args.style, n_rows=3) if args.style else (12, 10)
     fig, axes = plt.subplots(
         3, 1, figsize=fs, sharex=True, squeeze=False
     )
