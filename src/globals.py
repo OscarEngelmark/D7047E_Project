@@ -1,10 +1,7 @@
 from pathlib import Path
 from typing import List, Tuple
 
-import torch
-
-SEED   = 1
-DEVICE = 0 if torch.cuda.is_available() else "cpu"
+SEED = 1
 
 
 # ── altitude buckets ────────────────────────────────────────────────────────

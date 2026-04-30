@@ -47,6 +47,8 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 # callbacks.py so that explicit-step conflicts on resume cannot occur.
 ultralytics_settings.update({"wandb": False})
 
+DEVICE: str = "0" if torch.cuda.is_available() else "cpu"
+
 # ── defaults ─────────────────────────────────────────────────────────────────
 
 DEFAULT_EPOCHS   = 100
@@ -267,7 +269,7 @@ def resolve_wandb_kwargs(args: argparse.Namespace) -> Dict[str, Any]:
         "config": {
             **vars(args),
             "model":  f"{args.model}-obb",
-            "device": g.DEVICE,
+            "device": DEVICE,
             "seed":   g.SEED,
         }
     }
@@ -321,7 +323,7 @@ def resolve_train_kwargs(
         "close_mosaic": 0,
         "save_period":  10,
         "compile":      torch.cuda.is_available(),
-        "device":       g.DEVICE,
+        "device":       DEVICE,
         "seed":         g.SEED,
         "project":      str(g.RUNS_DIR),
         "name":         args.run_name,
@@ -347,7 +349,7 @@ def attach_callbacks(model: YOLO, args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
-    print(f"Device: {g.DEVICE}")
+    print(f"Device: {DEVICE}")
     
     dataset_yaml = write_dataset_yaml()
     print(f"Dataset: {dataset_yaml}")

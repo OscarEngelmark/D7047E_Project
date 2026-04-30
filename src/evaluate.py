@@ -14,6 +14,7 @@ python src/evaluate.py --weights runs/<run>/weights/best.pt --run-name my-eval
 import os
 import csv
 import argparse
+import torch
 import matplotlib.pyplot as plt
 import globals as g
 
@@ -26,6 +27,8 @@ from typing import Dict
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+DEVICE: str = "0" if torch.cuda.is_available() else "cpu"
 
 METRICS = [
     ("Precision",  "precision"),
@@ -157,7 +160,7 @@ def main() -> None:
     dataset_yaml = write_dataset_yaml()
     print(f"Weights:  {weights_path}")
     print(f"Dataset:  {dataset_yaml}")
-    print(f"Device:   {g.DEVICE}")
+    print(f"Device:   {DEVICE}")
 
     model = YOLO(str(weights_path))
     register_metadata_callbacks(model, training=False)
@@ -168,7 +171,7 @@ def main() -> None:
         imgsz=args.imgsz,
         batch=args.batch,
         workers=args.workers,
-        device=g.DEVICE,
+        device=DEVICE,
         project=str(g.PROJECT_DIR / "runs"),
         name=run_name,
     )
