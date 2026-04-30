@@ -300,7 +300,8 @@ class AltitudeAwareOBBTrainer(OBBTrainer):
         super().optimizer_step()
         if not self.ema:
             return
-        ema_sd = self.ema.ema.state_dict()
+        ema_module = unwrap_model(self.ema.ema)
+        ema_sd = ema_module.state_dict()
         if not any(
             v.is_floating_point() and not v.isfinite().all()
             for v in ema_sd.values()
@@ -311,10 +312,10 @@ class AltitudeAwareOBBTrainer(OBBTrainer):
             not v.is_floating_point() or v.isfinite().all()
             for v in model_sd.values()
         ):
-            for name, p in self.ema.ema.named_parameters():
+            for name, p in ema_module.named_parameters():
                 if name in model_sd:
                     p.data.copy_(model_sd[name])
-            for name, b in self.ema.ema.named_buffers():
+            for name, b in ema_module.named_buffers():
                 if name in model_sd:
                     b.data.copy_(model_sd[name])
             LOGGER.warning(
