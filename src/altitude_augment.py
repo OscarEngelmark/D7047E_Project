@@ -29,13 +29,11 @@ import json
 import math
 import random
 from pathlib import Path
+from typing import cast, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
-
 import torch.nn as nn
-from typing import cast, Dict, List, Optional, Tuple
-
 from ultralytics.data.augment import Compose, Mosaic, RandomPerspective
 from ultralytics.data.dataset import YOLODataset
 from ultralytics.models.yolo.obb.train import OBBTrainer

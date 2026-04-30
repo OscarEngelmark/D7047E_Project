@@ -29,12 +29,13 @@ everything to W&B in a single call.
 from __future__ import annotations
 
 import json
-import wandb
-import numpy as np
-import globals as g
-
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import wandb
+
+import globals as g
 
 
 # ── module state (metadata callbacks) ────────────────────────────────────────

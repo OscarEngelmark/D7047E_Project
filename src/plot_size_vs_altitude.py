@@ -24,12 +24,13 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import numpy as np
 
 SRC_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SRC_DIR))
+
 import globals as g
 
 IMG_W = 1920

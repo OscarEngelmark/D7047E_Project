@@ -23,10 +23,11 @@ Extension points
 from __future__ import annotations
 
 import csv
-import numpy as np
-import globals as g
-
 from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+
+import globals as g
 
 # ── CSV loading ─────────────────────────────────────────────────────────────
 

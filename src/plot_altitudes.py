@@ -17,14 +17,15 @@ Usage
 
 import argparse
 import json
-import numpy as np
-import matplotlib.pyplot as plt
-import globals as g
-
 from collections import defaultdict
 from pathlib import Path
-from frame_metadata import load_video_csv, estimate_altitudes_with_fit
 from typing import Any, Dict, List
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+import globals as g
+from frame_metadata import load_video_csv, estimate_altitudes_with_fit
 
 
 def parse_args() -> argparse.Namespace:

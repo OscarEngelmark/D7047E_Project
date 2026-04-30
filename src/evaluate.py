@@ -11,19 +11,20 @@ python src/evaluate.py --weights runs/<run>/weights/best.pt --split val
 python src/evaluate.py --weights runs/<run>/weights/best.pt --run-name my-eval
 """
 
-import os
-import csv
 import argparse
-import torch
-import matplotlib.pyplot as plt
-import globals as g
-
+import csv
+import os
 from datetime import datetime
 from pathlib import Path
+from typing import Dict
+
+import torch
+import matplotlib.pyplot as plt
 from ultralytics import YOLO
+
+import globals as g
 from callbacks import get_last_bucket_metrics, register_metadata_callbacks
 from train import write_dataset_yaml
-from typing import Dict
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")

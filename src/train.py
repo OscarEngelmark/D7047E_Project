@@ -22,23 +22,24 @@ python src/train.py --resume runs/exp-01/weights/epoch50.pt --run-name exp-01
 python src/train.py --resume --run-name exp-01 --wandb-id abc12345
 """
 
-import os
 import argparse
+import os
 from pathlib import Path
-import torch
-import yaml
-import wandb
-import globals as g
+from typing import Any, Dict, Optional
 
+import torch
+import wandb
+import yaml
 from ultralytics import YOLO, settings as ultralytics_settings
 from ultralytics.utils.downloads import attempt_download_asset
+
+import globals as g
 from altitude_augment import AltitudeAwareOBBTrainer
 from callbacks import (
     make_save_wandb_id_callback,
     make_unfreeze_callback,
     register_metadata_callbacks,
 )
-from typing import Any, Dict, Optional
 
 # Set PyTorch CUDA allocator to allow fragmentation (prevents GPU OOM errors)
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")

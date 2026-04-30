@@ -13,12 +13,12 @@ Checks:
 import random
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 from scipy.stats import kstest
-from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from altitude_augment import (
