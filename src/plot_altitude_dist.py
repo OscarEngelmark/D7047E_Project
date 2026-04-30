@@ -116,6 +116,10 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--x-max", type=float, default=350.0, dest="x_max",
+        help="Upper x-axis limit for all histogram plots (default: 350)",
+    )
+    p.add_argument(
         "--seed", type=int, default=g.SEED,
         help="RNG seed for reproducibility",
     )
@@ -315,7 +319,7 @@ def main() -> None:
         by_split, aug_alts, aug_weights,
         bins=args.bins,
         axes=list(axes[:, 0]),
-        x_max=350.0,
+        x_max=args.x_max,
         train_augmented=train_augmented,
     )
     fig.suptitle(title, fontsize=11)
