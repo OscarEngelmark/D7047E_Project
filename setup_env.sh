@@ -4,6 +4,7 @@ set -e
 echo "== Setting up the environment for the project..."
 
 echo "==> Installing system dependencies..."
+apt-get update -y
 apt-get install -y git libgl1
 
 echo "==> Creating virtual environment..."
