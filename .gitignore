@@ -239,5 +239,10 @@ notes.txt
 # Output files
 *.out
 
-# Report files
+# Report/presentation
 report/
+*pptx
+make_ppt.py
+
+# Graphviz files
+*.dot
