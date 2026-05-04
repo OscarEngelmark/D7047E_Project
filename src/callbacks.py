@@ -81,6 +81,11 @@ def make_unfreeze_callback(
        `_setup_train` re-applies the original `args.freeze`; with strict
        equality, resuming past `unfreeze_epoch` would silently leave the
        backbone frozen for the rest of training.
+
+    4. LR rescaling is gated on `trainer.start_epoch <= unfreeze_epoch`.
+       When resuming from a checkpoint saved *after* the original unfreeze
+       fired, the optimizer's `lr` and `initial_lr` are already scaled,
+       and applying `lr_factor` again would double-scale them.
     """
     def on_train_epoch_start(trainer) -> None:
         if getattr(trainer, "_did_unfreeze", False):
@@ -111,13 +116,22 @@ def make_unfreeze_callback(
         # 3. Optional LR rescaling. Both `lr` and `initial_lr` are updated:
         #    LambdaLR recomputes `lr = initial_lr * lf(epoch)` each step,
         #    and warmup interpolation also reads from `initial_lr`.
-        if lr_factor != 1.0:
+        #    Skip on resume past unfreeze_epoch: the loaded optimizer
+        #    state already carries the scaled values from the original run.
+        if lr_factor != 1.0 and trainer.start_epoch <= unfreeze_epoch:
             for pg in trainer.optimizer.param_groups:
                 pg["lr"] *= lr_factor
                 pg["initial_lr"] *= lr_factor
             new_lr = trainer.optimizer.param_groups[0]["lr"]
             print(
                 f"[unfreeze] LR scaled by {lr_factor} → {new_lr:.6f}"
+            )
+        elif lr_factor != 1.0:
+            print(
+                f"[unfreeze] Skipping LR rescale on resume "
+                f"(start_epoch={trainer.start_epoch} > "
+                f"unfreeze_epoch={unfreeze_epoch}); "
+                f"optimizer state already carries scaled LR"
             )
     return on_train_epoch_start
 
