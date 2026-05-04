@@ -322,7 +322,7 @@ def resolve_train_kwargs(
         "patience":     args.patience,
         "freeze":       args.freeze if args.freeze > 0 else None,
         "close_mosaic": 0,
-        "save_period":  10,
+        "save_period":  5,
         "compile":      torch.cuda.is_available(),
         "device":       DEVICE,
         "seed":         g.SEED,
