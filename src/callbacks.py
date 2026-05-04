@@ -158,7 +158,18 @@ def _bucket_for(altitude: Optional[float]) -> Optional[str]:
 
 
 def _on_val_start(validator) -> None:
+    """Wrap update_metrics once per validator instance, reset stats each call.
+
+    The trainer keeps a single validator across all epochs (created once in
+    BaseTrainer._setup_train), so naively rewrapping update_metrics every
+    epoch nests wrappers — by epoch N, n_new entries get appended N times
+    each call. We guard against this with a sentinel attribute and always
+    reset _per_image_stats here.
+    """
     validator._per_image_stats = []
+    if getattr(validator, "_metadata_wrap_installed", False):
+        return
+
     original_update = validator.update_metrics
     stats_dict = validator.metrics.stats
 
@@ -173,6 +184,7 @@ def _on_val_start(validator) -> None:
             )
 
     validator.update_metrics = wrapped_update_metrics
+    validator._metadata_wrap_installed = True
 
 
 def _to_key(s: str) -> str:
