@@ -241,8 +241,7 @@ notes.txt
 
 # Report/presentation
 report/
-*pptx
-make_ppt.py
+presentation/
 
 # Graphviz files
 *.dot
