@@ -14,8 +14,8 @@ ALTITUDE_BUCKETS: List[Tuple[str, float, float]] = [
 ]
 
 # ── wandb ───────────────────────────────────────────────────────────────────
-WANDB_ENTITY  = "d7047e-group12"
-WANDB_PROJECT = "Project-NVD"
+WANDB_ENTITY  = "hamid-sabeti"
+WANDB_PROJECT = "Altitude-Aware-YOLO"
 
 # ── paths ───────────────────────────────────────────────────────────────────
 PROJECT_DIR = Path(__file__).resolve().parent.parent   # …/Project
